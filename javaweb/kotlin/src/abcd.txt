@@ -1,0 +1,3349 @@
+package com.livehelp.client.ui.base;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.content.res.Configuration;
+import android.content.res.Resources;
+import android.graphics.Color;
+import android.net.ConnectivityManager;
+import android.net.wifi.WifiManager;
+import android.os.Bundle;
+import android.support.annotation.Nullable;
+import android.transition.Explode;
+import android.transition.Fade;
+import android.transition.Slide;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
+import com.livehelp.client.application.Config;
+import com.livehelp.client.application.LiveHelpApplication;
+import com.livehelp.client.eventbus.NetState;
+import com.livehelp.client.receiver.NetWorkChangReceiver;
+import com.livehelp.client.utils.LogUtils;
+import com.livehelp.client.utils.enums.TransferEnum;
+import com.trello.rxlifecycle2.components.support.RxAppCompatActivity;
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+public abstract class BaseActivity extends RxAppCompatActivity {
+    protected String tag;
+    protected Context mContext;
+    private NetWorkChangReceiver netWorkChangReceiver;
+    private boolean isRegistered;
+    @Override
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        initStateBar();
+        setTransferAnimation();
+        setContentView(initLayout());
+        mContext = this;
+        getPresenter();
+        LiveHelpApplication application = LiveHelpApplication.getInstance();
+        application.addActivity(this);
+        registerNetReceiver();
+        checkPermissions();
+        requestPermissions();
+        initView();
+        initData();
+        initClick();
+        initToolBar();
+        initRefresh();
+        getPhoneManufacturer();
+    }
+    private void initStateBar() {
+        Window window = getWindow();
+        window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+        window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        window.setStatusBarColor(Color.TRANSPARENT);
+    }
+    private void registerNetReceiver() { 
+        netWorkChangReceiver = new NetWorkChangReceiver();
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
+        filter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+        filter.addAction(ConnectivityManager.CONNECTIVITY_ACTION);
+        registerReceiver(netWorkChangReceiver, filter);
+        isRegistered = true;
+    }
+       private void setTransferAnimation() {
+        TransferEnum transferEnum = setTransferTag();
+        switch (transferEnum) {
+            case NORMAL:
+                break;
+            case FADE:
+                getWindow().setEnterTransition(new Fade());
+                getWindow().setExitTransition(new Fade());
+                break;
+            case SHARE:
+           getWindow().requestFeature(Window.FEATURE_CONTENT_TRANSITIONS);
+                break;
+            case SLIDE:
+                getWindow().setEnterTransition(new Slide());
+                break;
+            case EXPLODE:
+                getWindow().setEnterTransition(new Explode());
+                break;
+            default:
+        }
+    }
+    protected TransferEnum setTransferTag() {
+        return TransferEnum.NORMAL;
+    }
+    protected String getTag() {
+        tag = this.getClass().getSimpleName();
+        return tag;
+    }
+    protected abstract int initLayout();
+    protected abstract void getPresenter();
+    protected abstract void initView();
+    protected abstract void initData();
+    protected void initToolBar() {
+    }
+    protected abstract void initClick();
+    protected void initRefresh() {
+    }
+    protected void requestPermissions() {
+
+    }
+    protected void checkPermissions() {
+
+    }
+
+    @Subscribe
+    public void onNetStateChange(NetState netState) {
+        LogUtils.INSTANCE.e("NETSTATE", String.valueOf(netState.getMessage()));
+        onNetStateChangeListener(netState.getMessage());
+    }
+    protected void onNetStateChangeListener(int message) {
+
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (!EventBus.getDefault().isRegistered(this)) {
+            EventBus.getDefault().register(this);
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        EventBus.getDefault().unregister(this);
+        super.onStop();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        //解绑
+        if (isRegistered) {
+            unregisterReceiver(netWorkChangReceiver);
+        }
+    }
+
+    /**
+     * @作者 : clb
+     * @邮箱 : 17600686054@163.com
+     * @日期 : 2018/2/27
+     * @功能 : 获取手机厂商
+     */
+    private void getPhoneManufacturer() {
+        String carrier = android.os.Build.MANUFACTURER;
+        Config.CARRIER = carrier;
+    }
+
+    /**
+     *  @作者 : clb
+     *  @邮箱 : 17600686054@163.com
+     *  @日期 : 2018/3/12
+     *  @功能 : 禁止使用用户设置的字体大小,以免影响布局
+     */
+    @Override
+    public Resources getResources() {
+        Resources res = super.getResources();
+        Configuration config = new Configuration();
+        config.setToDefaults();
+        res.updateConfiguration(config, res.getDisplayMetrics());
+        return res;
+    }
+}
+package com.livehelp.client.ui.base;
+
+import android.content.Context;
+import android.os.Bundle;
+import android.support.annotation.Nullable;
+import android.support.v4.app.Fragment;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+
+import com.livehelp.client.eventbus.ReceiveCouponsEvent;
+import com.livehelp.client.utils.ToastUtils;
+
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
+
+/**
+ * Fragment父类
+ *
+ * @autor clb
+ * @time 2016/9/8  9:50
+ */
+public abstract class BaseFragment extends Fragment {
+
+    protected String TAG;
+    protected View mRootView;
+    protected Context mContext;
+
+    @Nullable
+    @Override
+    public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        if (null == mRootView) {
+            mRootView = inflater.inflate(initLayout(), container, false);
+        } else {
+            ViewGroup parent = (ViewGroup) mRootView.getParent();
+            if (null != parent) {
+                parent.removeView(mRootView);
+            }
+        }
+        return mRootView;
+    }
+
+    @Override
+    public void onViewCreated(View view, @Nullable Bundle savedInstanceState) {
+        TAG = this.getClass().getSimpleName();
+        initContext();
+        initView(mRootView);
+        initToolbar();
+        initData();
+        initRefresh();
+        initOnClick();
+    }
+    protected void initContext() {
+        mContext = getActivity();
+    }
+    protected void initOnClick() {
+
+    }
+    protected abstract int initLayout();
+
+    protected abstract void initView(View RootView);
+
+    protected abstract void initToolbar();
+
+    protected abstract void initData();
+
+
+    protected abstract void initRefresh();
+
+}
+package com.livehelp.client.application;
+
+import android.app.Activity;
+import android.app.Application;
+import android.content.Context;
+import android.support.annotation.NonNull;
+import android.util.Log;
+
+import com.alibaba.sdk.android.push.CloudPushService;
+import com.alibaba.sdk.android.push.CommonCallback;
+import com.alibaba.sdk.android.push.noonesdk.PushServiceFactory;
+import com.crashlytics.android.Crashlytics;
+import com.livehelp.client.R;
+import com.orhanobut.logger.AndroidLogAdapter;
+import com.orhanobut.logger.DiskLogAdapter;
+import com.orhanobut.logger.FormatStrategy;
+import com.orhanobut.logger.Logger;
+import com.orhanobut.logger.PrettyFormatStrategy;
+import com.scwang.smartrefresh.layout.SmartRefreshLayout;
+import com.scwang.smartrefresh.layout.api.DefaultRefreshFooterCreater;
+import com.scwang.smartrefresh.layout.api.DefaultRefreshHeaderCreater;
+import com.scwang.smartrefresh.layout.api.RefreshFooter;
+import com.scwang.smartrefresh.layout.api.RefreshHeader;
+import com.scwang.smartrefresh.layout.api.RefreshLayout;
+import com.scwang.smartrefresh.layout.footer.ClassicsFooter;
+import com.scwang.smartrefresh.layout.header.ClassicsHeader;
+import com.squareup.leakcanary.LeakCanary;
+import com.umeng.analytics.MobclickAgent;
+import com.umeng.commonsdk.BuildConfig;
+import com.umeng.commonsdk.UMConfigure;
+import com.umeng.socialize.PlatformConfig;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+
+import io.fabric.sdk.android.Fabric;
+
+
+
+public class LiveHelpApplication extends Application {
+    private static LiveHelpApplication instance;
+    private static final String TAG = "Init";
+    private List<Activity> activityList = new LinkedList<>();
+    public static Context appContext;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        appContext = getApplicationContext();
+        initFabric();
+        initLeakCarry();
+        initAliYuYin();
+        initLogger();
+        initCloudChannel(this);
+    }
+
+   
+    private void initCloudChannel(Context applicationContext) {
+        PushServiceFactory.init(applicationContext);
+        CloudPushService pushService = PushServiceFactory.getCloudPushService();
+        pushService.register(applicationContext, new CommonCallback() {
+            @Override
+            public void onSuccess(String response) {
+                Log.d(TAG, "init cloudchannel success");
+            }
+
+            @Override
+            public void onFailed(String errorCode, String errorMessage) {
+                Log.d(TAG, "init cloudchannel failed -- errorcode:" + errorCode + " -- errorMessage:" + errorMessage);
+            }
+        });
+    }
+
+    private void initLogger() {
+        Log.d("Tag", "I'm a log which you don't see easily, hehe");
+        Log.d("json content", "{ \"key\": 3, \n \"value\": something}");
+        Log.d("error", "There is a crash somewhere or any warning");
+
+        Logger.addLogAdapter(new AndroidLogAdapter());
+        Logger.d("message");
+
+        Logger.clearLogAdapters();
+
+
+        FormatStrategy formatStrategy = PrettyFormatStrategy.newBuilder()
+                .showThreadInfo(false)  // (Optional) Whether to show thread info or not. Default true
+                .methodCount(0)         // (Optional) How many method line to show. Default 2
+                .methodOffset(3)        // (Optional) Skips some method invokes in stack trace. Default 5
+//        .logStrategy(customLog) // (Optional) Changes the log strategy to print out. Default LogCat
+                .tag("My custom tag")   // (Optional) Custom tag for each log. Default PRETTY_LOGGER
+                .build();
+
+        Logger.addLogAdapter(new AndroidLogAdapter(formatStrategy));
+
+        Logger.addLogAdapter(new AndroidLogAdapter() {
+            @Override
+            public boolean isLoggable(int priority, String tag) {
+                return BuildConfig.DEBUG;
+            }
+        });
+
+        Logger.addLogAdapter(new DiskLogAdapter());
+
+
+        Logger.w("no thread info and only 1 method");
+
+        Logger.clearLogAdapters();
+        formatStrategy = PrettyFormatStrategy.newBuilder()
+                .showThreadInfo(false)
+                .methodCount(0)
+                .build();
+
+        Logger.addLogAdapter(new AndroidLogAdapter(formatStrategy));
+        Logger.i("no thread info and method info");
+
+        Logger.t("tag").e("Custom tag for only one use");
+
+        Logger.json("{ \"key\": 3, \"value\": something}");
+
+        Logger.d(Arrays.asList("foo", "bar"));
+
+        Map<String, String> map = new HashMap<>();
+        map.put("key", "value");
+        map.put("key1", "value2");
+
+        Logger.d(map);
+
+        Logger.clearLogAdapters();
+        formatStrategy = PrettyFormatStrategy.newBuilder()
+                .showThreadInfo(false)
+                .methodCount(0)
+                .tag("MyTag")
+                .build();
+        Logger.addLogAdapter(new AndroidLogAdapter(formatStrategy));
+
+        Logger.w("my log message with my tag");
+    }
+    private void initAliYuYin() {
+    private void initLeakCarry() {
+        //LeakCarry
+        if (LeakCanary.isInAnalyzerProcess(this)) {
+            // This process is dedicated to LeakCanary for heap analysis.
+            // You should not init your app in this process.
+            return;
+        }
+        LeakCanary.install(this);
+        //友盟
+        UMConfigure.init(this, UMConfigure.DEVICE_TYPE_PHONE, null);
+
+        MobclickAgent.setScenarioType(this, MobclickAgent.EScenarioType.E_UM_NORMAL);
+        //友盟BUG
+        MobclickAgent.setCatchUncaughtExceptions(true);
+        //友盟测试数据处理--5.2
+        MobclickAgent.setDebugMode(true);
+
+    }
+
+    {
+
+        PlatformConfig.setWeixin("wx967daebe835fbeac", "5bb696d9ccd75a38c8a0bfe0675559b3");
+        PlatformConfig.setQQZone("100424468", "c7394704798a158208a74ab60104f0ba");
+        PlatformConfig.setSinaWeibo("1818905915", "d9012fb50689f52705da7d0cc9cd1a19", "http://sns.whalecloud.com");
+    }
+    private void initFabric() {
+        //BUG
+        Fabric.with(this, new Crashlytics());
+    }
+    public static LiveHelpApplication getInstance() {
+        if (null == instance) {
+            instance = new LiveHelpApplication();
+        }
+        return instance;
+    }
+
+   
+    public void addActivity(Activity activity) {
+        activityList.add(activity);
+    }
+    //static 代码段可以防止内存泄露
+    static {
+        //设置全局的Header构建器
+        SmartRefreshLayout.setDefaultRefreshHeaderCreater(new DefaultRefreshHeaderCreater() {
+            @NonNull
+            @Override
+            public RefreshHeader createRefreshHeader(Context context, RefreshLayout layout) {
+                //全局设置主题颜色
+                layout.setPrimaryColorsId(R.color.transparent, android.R.color.white);
+//                layout.setRefreshHeader(new BezierRadarHeader(context));
+                //.setTimeFormat(new DynamicTimeFormat("更新于 %s"));//指定为经典Header，默认是 贝塞尔雷达Header
+                return new ClassicsHeader(context);
+            }
+        });
+        //设置全局的Footer构建器
+        SmartRefreshLayout.setDefaultRefreshFooterCreater(new DefaultRefreshFooterCreater() {
+            @NonNull
+            @Override
+            public RefreshFooter createRefreshFooter(Context context, RefreshLayout layout) {
+                //指定为经典Footer，默认是 BallPulseFooter
+                return new ClassicsFooter(context).setDrawableSize(20);
+            }
+        });
+    }
+    public static Context getContext() {
+        return instance;
+    }
+
+}
+package com.livehelp.client.db;
+
+import android.content.Context;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/2/28 17:26
+ * 类名     : RecordSQLiteOpenHelper
+ * 功能     : 数据库保存搜索记录
+ */
+
+public class RecordSQLiteOpenHelper extends SQLiteOpenHelper {
+    private static String name = "search_service_history.db";
+    private static Integer version = 1;
+
+    public RecordSQLiteOpenHelper(Context context) {
+        super(context, name, null, version);
+    }
+
+    @Override
+    public void onCreate(SQLiteDatabase db) {
+        db.execSQL("create table records(id integer primary key autoincrement,name varchar(200))");
+    }
+
+    @Override
+    public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+
+    }
+}
+package com.livehelp.client.ui.mall.goodslist
+
+import android.content.Intent
+import android.support.v4.app.Fragment
+import android.support.v7.widget.LinearLayoutManager
+import android.support.v7.widget.RecyclerView
+import android.view.View
+import android.widget.ImageView
+import android.widget.TextView
+import com.livehelp.client.R
+import com.livehelp.client.adapter.AddressManageAdapter
+import com.livehelp.client.adapter.GoodsListAdapter
+import com.livehelp.client.application.Config
+import com.livehelp.client.ui.base.BaseActivity
+import com.livehelp.client.ui.mall.GoodsDetailActivity
+import com.livehelp.client.utils.StatusBarUtils.setColor
+import com.zhy.adapter.recyclerview.MultiItemTypeAdapter
+import kotlinx.android.synthetic.main.activity_goodslist.*
+import java.util.ArrayList
+
+/**
+ **************************************************
+ * 项目名称:   bb_android0305
+ * @Author     czsdandy
+ * 创建时间:   2018/3/6  14:18
+ * 用途        同类商品列表及筛选 例如：男装
+ **************************************************
+ */
+class GoodsListActivity : BaseActivity(), View.OnClickListener {
+
+    private var index = -1;
+    private var List = ArrayList<String>()
+
+    override fun initLayout(): Int {
+        return R.layout.activity_goodslist
+    }
+
+    override fun getPresenter() {
+
+    }
+
+    override fun initView() {
+        List.add("1")
+        List.add("1")
+        List.add("1")
+        List.add("1")
+        rcv_goodslist.layoutManager = LinearLayoutManager(this)
+        var goodsListAdapter = GoodsListAdapter(this, R.layout.item_goodslist, List)
+        rcv_goodslist.adapter = goodsListAdapter
+        goodsListAdapter.setOnItemClickListener(object : MultiItemTypeAdapter.OnItemClickListener {
+            override fun onItemLongClick(view: View?, holder: RecyclerView.ViewHolder?, position: Int): Boolean {
+                return false
+            }
+
+            override fun onItemClick(view: View?, holder: RecyclerView.ViewHolder?, position: Int) {
+                startActivity(Intent(this@GoodsListActivity, GoodsDetailActivity::class.java))
+            }
+
+        })
+    }
+
+    override fun initData() {
+
+    }
+
+    override fun initClick() {
+        ll_price_all.setOnClickListener(this)
+        rl_price_all.setOnClickListener(this)
+        rl_amount_all.setOnClickListener(this)
+        iv_scrolltotop.setOnClickListener(this)
+    }
+
+    override fun onClick(v: View?) {
+        when (v?.id) {
+            R.id.rl_price_all -> {
+                clearColor()
+                setColor(tv_price_goodslist)
+                if (index != 0) {
+                    setUp(iv_goodslist_price)
+                    index = 0
+                } else {
+                    setDown(iv_goodslist_price)
+                    index = -2
+                }
+            }
+            R.id.rl_amount_all -> {
+                clearColor()
+                setColor(tv_amount_goodslist)
+                if (index != 1) {
+                    setUp(iv_amount_googslist)
+                    index = 1
+                } else {
+                    setDown(iv_amount_googslist)
+                    index = -2
+                }
+            }
+            R.id.iv_scrolltotop -> {
+                rcv_goodslist.scrollToPosition(0)
+            }
+            else -> {
+                clearColor()
+                setColor(tv_all)
+                if (index != -1) {
+                    clearBackG()
+                }
+                index = -1
+            }
+        }
+    }
+
+    private fun setDown(iv_goodslist_price: ImageView?) {
+        iv_goodslist_price?.setImageDrawable(resources.getDrawable(R.mipmap.arrow_down))
+    }
+
+    private fun setUp(iv_goodslist_price: ImageView?) {
+        iv_goodslist_price?.setImageDrawable(resources.getDrawable(R.mipmap.arrow_up))
+    }
+
+    private fun setColor(tv_all: TextView?) {
+        tv_all?.setTextColor(resources.getColor(R.color.c_f66e26))
+    }
+
+    private fun clearBackG() {
+        iv_goodslist_price.setImageDrawable(resources.getDrawable(R.mipmap.arrow_black))
+        iv_amount_googslist.setImageDrawable(resources.getDrawable(R.mipmap.arrow_black))
+    }
+
+    private fun clearColor() {
+        tv_all.setTextColor(resources.getColor(R.color.c_3a))
+        tv_price_goodslist.setTextColor(resources.getColor(R.color.c_3a))
+        tv_amount_goodslist.setTextColor(resources.getColor(R.color.c_3a))
+        clearBackG()
+    }
+}
+package com.livehelp.client.ui.mall;
+
+import android.app.Dialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.support.design.widget.TabLayout;
+import android.support.v4.app.Fragment;
+import android.support.v4.view.ViewPager;
+import android.support.v7.widget.GridLayoutManager;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.text.TextUtils;
+import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import com.livehelp.client.R;
+import com.livehelp.client.adapter.ActivityLabelAdapter;
+import com.livehelp.client.adapter.GoodsDetailAdapter;
+import com.livehelp.client.adapter.ReceiveCouponsAdapter;
+import com.livehelp.client.eventbus.ChooseGoodsSize;
+import com.livehelp.client.eventbus.ReceiveCouponsEvent;
+import com.livehelp.client.ui.base.BaseActivity;
+import com.livehelp.client.utils.DialogUtils;
+import com.livehelp.client.utils.DpPxUtils;
+import com.livehelp.client.utils.ToastUtils;
+import com.livehelp.client.widget.FlowLayout;
+
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+import static com.umeng.socialize.utils.DeviceConfig.context;
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/3/5 9:59
+ * 类名     : GoodsDetailActivity
+ * 功能     : 商品详情
+ */
+
+public class GoodsDetailActivity extends BaseActivity implements View.OnClickListener {
+
+    private List<Fragment> fragmentList = new ArrayList<>();
+    private TabLayout tabGoodsDetail;
+    private ViewPager vpGoodsDetail;
+    private String[] tabTitle = {"商品", "详情", "评论"};
+    private RecyclerView listActivityLabel;
+    private Dialog dialog;
+    private TextView customerService;
+    private TextView phoneNumber;
+    private TextView we_chat_number;
+    private TextView ac_goods_buynow;
+
+    @Override
+    protected int initLayout() {
+        EventBus.getDefault().register(this);
+        return R.layout.activity_goods_detail;
+    }
+
+    @Override
+    protected void getPresenter() {
+
+    }
+
+    @Override
+    protected void initView() {
+        tabGoodsDetail = findViewById(R.id.tab_goods_detail);
+        vpGoodsDetail = findViewById(R.id.vp_goods_detail);
+        customerService = findViewById(R.id.customer_service);
+        ac_goods_buynow = findViewById(R.id.ac_goods_buynow);
+    }
+
+    @Override
+    protected void initData() {
+        fragmentList.add(new GoodsFragment());
+        fragmentList.add(new GoodsDetailFragment());
+        fragmentList.add(new GoodsCommentFragment());
+
+        GoodsDetailAdapter goodsDetailAdapter = new GoodsDetailAdapter(getSupportFragmentManager());
+        goodsDetailAdapter.setData(fragmentList, tabTitle);
+        vpGoodsDetail.setAdapter(goodsDetailAdapter);
+        tabGoodsDetail.setupWithViewPager(vpGoodsDetail);
+//        vpGoodsDetail.setCurrentItem(2);
+    }
+
+    @Override
+    protected void initClick() {
+        customerService.setOnClickListener(this);
+        ac_goods_buynow.setOnClickListener(this);
+    }
+
+    private LinearLayout goodsSpec_ll;
+
+    /**
+     * @作者 : clb
+     * @邮箱 : 17600686054@163.com
+     * @日期 : 2018/3/6
+     * @功能 : 选择商品规格
+     */
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void choose(ChooseGoodsSize chooseGoodsSize) {
+        this.inflater = LayoutInflater.from(this);
+        dialog = new Dialog(mContext, R.style.BottomDialogStyle);
+        View view = LayoutInflater.from(mContext).inflate(R.layout.choose_goods_size, null);
+        goodsSpec_ll = (LinearLayout) view.findViewById(R.id.goodsSpec_ll);
+        initSpec();
+        dialog.setContentView(view);
+        ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
+        layoutParams.width = getResources().getDisplayMetrics().widthPixels;
+        layoutParams.height = DpPxUtils.dip2px(400);
+        view.setLayoutParams(layoutParams);
+        Window window = dialog.getWindow();
+        if (window == null) {
+            return;
+        }
+        window.setGravity(Gravity.BOTTOM);
+        window.setWindowAnimations(R.style.BottomDialog_Animation);
+        dialog.show();
+    }
+
+    protected ViewGroup container;
+    protected LayoutInflater inflater;
+
+    /**
+     * 初始化规格
+     */
+    private void initSpec() {
+        for (int x = 0; x < 9; x++) {
+            View localView = this.inflater.inflate(R.layout.item_goods_spec, this.container, false);
+            FlowLayout localFlowLayout = (FlowLayout) localView.findViewById(R.id.spec_value_layout);
+            TextView tv_specName = (TextView) localView.findViewById(R.id.spec_name);
+            tv_specName.setText("1");
+            localFlowLayout.setTag(1);
+            for (int y = 0; y < 3; y++) {
+                TextView localTextView = new TextView(localView.getContext());
+                localTextView.setTextSize(13);
+                localTextView.setTextColor(getResources().getColor(R.color.pd_black_68));
+                localTextView.setEllipsize(TextUtils.TruncateAt.END);
+                localTextView.setGravity(17);
+                localTextView.setBackgroundResource(R.drawable.pd_style_c_bg);
+                localTextView.setPadding(30, 10, 30, 10);
+                FlowLayout.LayoutParams localLayoutParams = new FlowLayout.LayoutParams(-2, -2);
+                localLayoutParams.setMargins(10, 10, 10, 10);
+                localTextView.setLayoutParams(localLayoutParams);
+                localTextView.setMinWidth(80);
+                localTextView.setSingleLine(true);
+                localTextView.setText("A");
+                localTextView.setOnClickListener(this);
+                if (y == 0) {
+                    localTextView.setSelected(true);
+                }
+                localFlowLayout.addView(localTextView, y);
+            }
+            this.goodsSpec_ll.addView(localView, x);
+        }
+//        selectSpec();
+    }
+
+    /**
+     * @作者 : clb
+     * @邮箱 : 17600686054@163.com
+     * @日期 : 2018/3/6
+     * @功能 : 领取优惠券
+     */
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void event(ReceiveCouponsEvent event) {
+        dialog = new Dialog(mContext, R.style.BottomDialogStyle);
+        View view = LayoutInflater.from(mContext).inflate(R.layout.goods_attributes, null);
+        RecyclerView listActivityLabel = view.findViewById(R.id.list_activity_label);
+        RecyclerView listReceiveCoupons = view.findViewById(R.id.list_receive_coupons);
+        Button finished = view.findViewById(R.id.finished);
+        dialog.setContentView(view);
+        ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
+        layoutParams.width = getResources().getDisplayMetrics().widthPixels;
+        layoutParams.height = DpPxUtils.dip2px(400);
+        view.setLayoutParams(layoutParams);
+        Window window = dialog.getWindow();
+        if (window == null) {
+            return;
+        }
+        window.setGravity(Gravity.BOTTOM);
+        window.setWindowAnimations(R.style.BottomDialog_Animation);
+
+        setactivityLabelData(listActivityLabel);
+        setReceiveCouponsData(listReceiveCoupons);
+
+        finished.setOnClickListener(this);
+        dialog.show();
+    }
+
+    /**
+     * @作者 : clb
+     * @邮箱 : 17600686054@163.com
+     * @日期 : 2018/3/6
+     * @功能 : 设置优惠券列表
+     */
+    private void setReceiveCouponsData(RecyclerView listReceiveCoupons) {
+        List<String> receiveCoupnosList = new ArrayList<>();
+        receiveCoupnosList.add("1");
+        receiveCoupnosList.add("1");
+        receiveCoupnosList.add("1");
+        receiveCoupnosList.add("1");
+        receiveCoupnosList.add("1");
+        LinearLayoutManager manager = new LinearLayoutManager(mContext) {
+            @Override
+            public boolean canScrollVertically() {
+                //设置不可以滑动
+                return true;
+            }
+        };
+        listReceiveCoupons.setLayoutManager(manager);
+        ReceiveCouponsAdapter receiveCouponsAdapter = new ReceiveCouponsAdapter(mContext, R.layout.item_couponspoint_blue, receiveCoupnosList);
+        listReceiveCoupons.setAdapter(receiveCouponsAdapter);
+    }
+
+    /**
+     * @param listActivityLabel
+     * @作者 : clb
+     * @邮箱 : 17600686054@163.com
+     * @日期 : 2018/3/6
+     * @功能 : 设置满减标签
+     */
+    private void setactivityLabelData(RecyclerView listActivityLabel) {
+        List<String> labelList = new ArrayList<>();
+        labelList.add("满10减1");
+        labelList.add("满10减1");
+        labelList.add("满10减1");
+        labelList.add("满10减1");
+        listActivityLabel.setLayoutManager(new GridLayoutManager(mContext, 4));
+        ActivityLabelAdapter activityLabelAdapter = new ActivityLabelAdapter(mContext, R.layout.activity_label, labelList);
+        listActivityLabel.setAdapter(activityLabelAdapter);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        EventBus.getDefault().unregister(this);
+    }
+
+    @Override
+    public void onClick(View v) {
+        switch (v.getId()) {
+            case R.id.finished:
+                //点击优惠券领取弹框中的完成
+                dialog.dismiss();
+                break;
+            case R.id.customer_service:
+                //客服
+                showCustomerServiceDialog();
+                break;
+            case R.id.qq_service:
+                //打开QQ
+                if (checkApkExist(mContext, "com.tencent.mobileqq")) {
+                    String qqUrl = "mqqwpa://im/chat?chat_type=wpa&uin=3214341986&version=1";
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(qqUrl)));
+                } else {
+                    ToastUtils.showToast(mContext, "请安装QQ");
+                }
+                break;
+            case R.id.we_chat_service:
+                dialog.dismiss();
+                DialogUtils.showDialog(mContext, "微信号已经复制在剪切板\n是否打开微信?", "取消", "确定", new DialogUtils.OnDialogClickListener() {
+                    @Override
+                    public void onCancleClick() {
+                        dialog.dismiss();
+                    }
+
+                    @Override
+                    public void onConfirmClick() {
+
+                        //获取剪贴板管理器：
+                        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                        // 创建普通字符型ClipData
+                        ClipData mClipData = ClipData.newPlainText("Label", we_chat_number.getText().toString().trim());
+                        // 将ClipData内容放到系统剪贴板里。
+                        if (cm != null) {
+                            cm.setPrimaryClip(mClipData);
+                        } else {
+                            ToastUtils.showToast(mContext, "复制微信号失败!!!");
+                        }
+
+                        //打开微信
+                        if (checkApkExist(mContext, "com.tencent.mm")) {
+                            Intent intent = new Intent();
+                            ComponentName cmp = new ComponentName("com.tencent.mm", "com.tencent.mm.ui.LauncherUI");
+                            intent.setAction(Intent.ACTION_MAIN);
+                            intent.addCategory(Intent.CATEGORY_LAUNCHER);
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            intent.setComponent(cmp);
+                            startActivity(intent);
+
+                        } else {
+                            ToastUtils.showToast(mContext, "请安装微信");
+                        }
+                    }
+                });
+
+                break;
+            case R.id.phone_service:
+                Intent intent = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + phoneNumber.getText().toString().trim()));
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+                break;
+            case R.id.cancel:
+                //关闭客服弹窗
+                dialog.dismiss();
+                break;
+
+            case R.id.ac_goods_buynow:
+                //立即购买
+                startActivity(new Intent(this, MakeSureOrderActivity.class));
+                break;
+            default:
+        }
+    }
+
+    /**
+     * @作者 : clb
+     * @邮箱 : 17600686054@163.com
+     * @日期 : 2018/3/7
+     * @功能 : 显示客服弹框
+     */
+    private void showCustomerServiceDialog() {
+        dialog = new Dialog(mContext, R.style.BottomDialogStyle);
+        View view = LayoutInflater.from(mContext).inflate(R.layout.customer_service_dialog, null);
+        LinearLayout qqService = view.findViewById(R.id.qq_service);
+        LinearLayout weChatService = view.findViewById(R.id.we_chat_service);
+        LinearLayout phoneService = view.findViewById(R.id.phone_service);
+        phoneNumber = view.findViewById(R.id.phone_number);
+        we_chat_number = view.findViewById(R.id.we_chat_number);
+        Button cancel = view.findViewById(R.id.cancel);
+        dialog.setContentView(view);
+        ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
+        layoutParams.width = getResources().getDisplayMetrics().widthPixels;
+        layoutParams.height = DpPxUtils.dip2px(220);
+        view.setLayoutParams(layoutParams);
+        Window window = dialog.getWindow();
+        if (window == null) {
+            return;
+        }
+        window.setGravity(Gravity.BOTTOM);
+        window.setWindowAnimations(R.style.BottomDialog_Animation);
+
+        qqService.setOnClickListener(this);
+        weChatService.setOnClickListener(this);
+        phoneService.setOnClickListener(this);
+        cancel.setOnClickListener(this);
+        dialog.show();
+    }
+
+    /**
+     * @作者 : clb
+     * @邮箱 : 17600686054@163.com
+     * @日期 : 2018/3/7
+     * @功能 : 检查是否安装应用
+     */
+    private boolean checkApkExist(Context mContext, String packageName) {
+        if (packageName == null || Objects.equals("", packageName)) {
+            return false;
+        }
+        try {
+            ApplicationInfo info = mContext.getPackageManager().getApplicationInfo(packageName, PackageManager.GET_UNINSTALLED_PACKAGES);
+            return true;
+        } catch (PackageManager.NameNotFoundException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+}
+package com.livehelp.client.ui.mall
+
+import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.ContactsContract
+import android.support.v4.app.ActivityCompat
+import android.view.View
+import android.widget.Toast
+import com.livehelp.client.R
+import com.livehelp.client.application.Config
+import com.livehelp.client.ui.base.BaseActivity
+import com.livehelp.client.utils.LogUtils
+import com.livehelp.client.utils.ToastUtils
+import kotlinx.android.synthetic.main.activity_edit_address.*
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/3/8 10:40
+ * 类名     : EditAddressActivity
+ * 功能     : 编辑收货地址
+ */
+class EditAddressActivity : BaseActivity(), View.OnClickListener {
+
+    override fun initLayout(): Int {
+        return R.layout.activity_edit_address
+    }
+
+    override fun getPresenter() {
+    }
+
+    override fun initView() {
+    }
+
+    override fun initData() {
+    }
+
+    override fun initClick() {
+        choose_contact.setOnClickListener(this)
+    }
+
+    override fun onClick(v: View) {
+        when (v) {
+            choose_contact -> {
+                requestPermissions()
+                startActivityForResult(Intent(Intent.ACTION_PICK, ContactsContract.Contacts.CONTENT_URI), 0)
+            }
+            else -> {
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode == Activity.RESULT_OK) {
+            //处理返回的data,获取选择的联系人信息
+            if (data != null) {
+                val uri = data.data
+                val contacts = getPhoneContacts(uri)
+                if (contacts!=null){
+                    name.setText(contacts[0])
+                    phone.setText(contacts[1])
+                }else{
+                    ToastUtils.showToast(mContext,"解析联系人失败!!!")
+                }
+            } else {
+                ToastUtils.showToast(mContext, "获取联系人失败!!!")
+            }
+
+
+        }
+    }
+
+    private fun getPhoneContacts(uri: Uri): Array<String?>? {
+        val contact = arrayOfNulls<String>(2)
+        //得到ContentResolver对象
+        val cr = contentResolver
+        //取得电话本中开始一项的光标
+        val cursor = cr.query(uri, null, null, null, null)
+        if (cursor != null) {
+            cursor.moveToFirst()
+            //取得联系人姓名
+            val nameFieldColumnIndex = cursor.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME)
+            contact[0] = cursor.getString(nameFieldColumnIndex)
+            //取得电话号码
+            val ContactId = cursor.getString(cursor.getColumnIndex(ContactsContract.Contacts._ID))
+            val phone = cr.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, null,
+                    ContactsContract.CommonDataKinds.Phone.CONTACT_ID + "=" + ContactId, null, null)
+            if (phone != null) {
+                phone.moveToFirst()
+                contact[1] = phone.getString(phone.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER))
+            }
+            phone!!.close()
+            cursor.close()
+        } else {
+            return null
+        }
+        return contact
+    }
+
+    /**
+     *  @作者 : clb
+     *  @邮箱 : 17600686054@163.com
+     *  @日期 : 2018/3/8
+     *  @功能 : 申请通讯簿权限
+     */
+    override fun requestPermissions() {
+        super.requestPermissions()
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+            // 申请定位权限 申请SD卡
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_CONTACTS), Config.READ_CONTACTS_CODE)
+        } else {
+            //如果有权限的话,直接开始获取联系人信息
+            //选择联系人
+//            startActivityForResult(Intent(Intent.ACTION_PICK, ContactsContract.Contacts.CONTENT_URI), 0)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+        // requestCode即所声明的权限获取码，在checkSelfPermission时传入
+            Config.LOCATION_PERMISSION_CODE -> {
+                if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // 获取到权限，作相应处理
+                    //选择联系人
+                    startActivityForResult(Intent(Intent.ACTION_PICK, ContactsContract.Contacts.CONTENT_URI), 0)
+                } else {
+                    // 没有获取到权限，做特殊处理
+                    Toast.makeText(applicationContext, "无法获取到联系人信息哦!!!", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+}
+package com.livehelp.client.ui.mall
+
+import android.support.design.widget.TabLayout
+import android.support.v7.widget.LinearLayoutManager
+import com.livehelp.client.R
+import com.livehelp.client.adapter.HeaderBottomAdapter
+import com.livehelp.client.application.Config
+import com.livehelp.client.ui.base.BaseActivity
+import com.livehelp.client.utils.GlideUtils
+import kotlinx.android.synthetic.main.activity_sec_kill.*
+import kotlinx.android.synthetic.main.base_toolbar.*
+import java.util.*
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/3/2 11:14
+ * 类名     : SecKillActivity
+ * 功能     : 秒杀
+ */
+class SecKillActivity : BaseActivity(), TabLayout.OnTabSelectedListener {
+
+    private var currentTab = 0
+    private val listItem = ArrayList<String>()
+
+
+    private val list = ArrayList<String>()
+    override fun initLayout(): Int {
+        return R.layout.activity_sec_kill
+    }
+
+    override fun getPresenter() {
+    }
+
+    override fun initView() {
+    }
+
+    override fun initData() {
+        list.add("13:00\n已结束")
+        list.add("14:00\n正在进行")
+        list.add("15:00\n未开始")
+
+        listItem.add("1")
+        listItem.add("1")
+        listItem.add("1")
+        listItem.add("1")
+        listItem.add("1")
+        listItem.add("1")
+
+        for (i in 0 until list.size) {
+            time_tab.addTab(time_tab.newTab().setText(list[i]))
+        }
+    }
+
+    override fun initClick() {
+        time_tab.setOnTabSelectedListener(this)
+    }
+
+    override fun initToolBar() {
+        super.initToolBar()
+        title_toolbar.text = "秒杀"
+    }
+
+    override fun onTabReselected(tab: TabLayout.Tab) {
+
+    }
+
+    override fun onTabUnselected(tab: TabLayout.Tab) {
+    }
+
+    override fun onTabSelected(tab: TabLayout.Tab) {
+        currentTab = tab.position
+        changeListData(currentTab)
+    }
+
+    /**
+     *  @作者 : clb
+     *  @邮箱 : 17600686054@163.com
+     *  @日期 : 2018/3/7
+     *  @功能 : 设置秒杀列表数据
+     */
+    private fun changeListData(currentTab: Int) {
+
+        //设置不能滑动
+        val manager = LinearLayoutManager(mContext)
+        list_sec_kill.layoutManager = manager
+        when (currentTab) {
+            0 -> {
+                val adapter = HeaderBottomAdapter(mContext)
+                list_sec_kill.adapter = adapter
+            }
+            1 -> {
+                val adapter = HeaderBottomAdapter(mContext)
+                list_sec_kill.adapter = adapter
+            }
+            2 -> {
+                val adapter = HeaderBottomAdapter(mContext)
+                list_sec_kill.adapter = adapter
+            }
+            else -> {
+            }
+        }
+    }
+
+}
+package com.livehelp.client.ui.service;
+
+import android.app.Dialog;
+import android.content.Intent;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+
+import com.livehelp.client.R;
+import com.livehelp.client.adapter.AddressManageAdapter;
+import com.livehelp.client.ui.base.BaseActivity;
+import com.livehelp.client.ui.mall.EditAddressActivity;
+import com.livehelp.client.utils.DensityUtil;
+import com.livehelp.client.utils.ToastUtils;
+
+/**
+ * *************************************************
+ * 项目名称:   bb_android
+ *
+ * @Author czsdandy
+ * 创建时间:   2018/2/23  11:27
+ * 用途
+ *
+ * *************************************************
+ */
+public class AddressManageActivity extends BaseActivity implements AddressManageAdapter.OnItemClickListener {
+    private Button btn_addnewaddress ;
+    @Override
+    protected int initLayout() {
+        return R.layout.activity_addressmanage;
+    }
+
+    @Override
+    protected void getPresenter() {
+
+    }
+
+    @Override
+    protected void initView() {
+        RecyclerView rcy_addressmanage =(RecyclerView) findViewById(R.id.rcy_addressmanage);
+        LinearLayoutManager linearLayoutManager = new LinearLayoutManager(this);
+        rcy_addressmanage.setLayoutManager(linearLayoutManager);
+        AddressManageAdapter addressManageAdapter = new AddressManageAdapter();
+        rcy_addressmanage.setAdapter(addressManageAdapter);
+
+        addressManageAdapter.setOnItemClickListener(this);
+        btn_addnewaddress =(Button) findViewById(R.id.btn_addnewaddress);
+
+//        RoundHeadView headview =(RoundHeadView) findViewById(R.id.headview);
+//        GlideUtils.INSTANCE.showRoundImg("http://pic54.nipic.com/file/20141201/13740598_112413393000_2.jpg" ,mContext ,headview);
+
+    }
+
+    @Override
+    protected void initData() {
+
+    }
+
+    @Override
+    protected void initClick() {
+        btn_addnewaddress.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showPriceDetail();
+            }
+        });
+    }
+
+    /**
+     * 价格明细底部弹出框
+     */
+    private void showPriceDetail() {
+        Dialog bottomDialog = new Dialog(this, R.style.BottomDialog);
+        View contentView = LayoutInflater.from(this).inflate(R.layout.poplayout_pricedetail, null);
+        bottomDialog.setContentView(contentView);
+        ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) contentView.getLayoutParams();
+        params.width = getResources().getDisplayMetrics().widthPixels - DensityUtil.dp2px(this, 16f);
+        params.bottomMargin = DensityUtil.dp2px(this, 48f);
+        contentView.setLayoutParams(params);
+        bottomDialog.getWindow().setGravity(Gravity.BOTTOM);
+        bottomDialog.getWindow().setWindowAnimations(R.style.BottomDialog_Animation);
+        bottomDialog.show();
+    }
+
+    @Override
+    public void onEditClick(View view, int position) {
+        ToastUtils.showToast(AddressManageActivity.this , "onEditClick"+position);
+        Intent intent = new Intent(this, EditAddressActivity.class);
+        startActivity(intent);
+    }
+
+    @Override
+    public void onDeleteClick(View view, int position) {
+        ToastUtils.showToast(AddressManageActivity.this , "onDeleteClick"+position);
+    }
+}
+package com.livehelp.client.ui.service;
+
+import android.content.Intent;
+import android.view.View;
+import android.widget.Button;
+
+import com.livehelp.client.R;
+import com.livehelp.client.ui.base.BaseActivity;
+
+/**
+ * *************************************************
+ * 项目名称:   bb_android
+ *
+ * @Author czsdandy
+ * 创建时间:   2018/2/26  10:26
+ * 用途 公益活动详情
+ * *************************************************
+ */
+public class EventDetailActivity extends BaseActivity implements View.OnClickListener {
+
+    private Button join_in;
+    private Button btn_addnewaddress;
+
+    @Override
+    protected int initLayout() {
+        return R.layout.activity_eventdetail;
+    }
+
+    @Override
+    protected void getPresenter() {
+
+    }
+
+    @Override
+    protected void initView() {
+        join_in = findViewById(R.id.join_in);
+        btn_addnewaddress = findViewById(R.id.btn_addnewaddress);
+
+    }
+
+    @Override
+    protected void initData() {
+
+    }
+
+    @Override
+    protected void initClick() {
+        join_in.setOnClickListener(this);
+        btn_addnewaddress.setOnClickListener(this);
+    }
+
+    @Override
+    public void onClick(View v) {
+        Intent intent;
+        switch (v.getId()) {
+            case R.id.join_in:
+                intent = new Intent(mContext, RegistrationDetailsActivity.class);
+                startActivity(intent);
+                break;
+            case R.id.back:
+                finish();
+                break;
+            case R.id.btn_addnewaddress:
+                intent = new Intent(mContext, RegisterResultActivity.class);
+                startActivity(intent);
+                break;
+            default:
+        }
+    }
+}
+package com.livehelp.client.ui.service
+
+import android.graphics.Color
+import android.os.Bundle
+import android.support.v7.app.AppCompatActivity
+import android.view.View
+import android.view.WindowManager
+import com.amap.api.location.AMapLocationClient
+import com.amap.api.maps.AMap
+import com.amap.api.maps.CameraUpdateFactory
+import com.amap.api.maps.model.CameraPosition
+import com.amap.api.maps.model.LatLng
+import com.amap.api.maps.model.MyLocationStyle
+import com.amap.api.services.core.LatLonPoint
+import com.amap.api.services.geocoder.GeocodeResult
+import com.amap.api.services.geocoder.GeocodeSearch
+import com.amap.api.services.geocoder.RegeocodeQuery
+import com.amap.api.services.geocoder.RegeocodeResult
+import com.livehelp.client.R
+import com.livehelp.client.application.Config
+import com.livehelp.client.utils.LogUtils
+import kotlinx.android.synthetic.main.activity_map.*
+
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/2/26 15:31
+ * 类名     : MapActivity
+ * 功能     : 地图选址
+ */
+class MapActivity : AppCompatActivity(), AMap.OnCameraChangeListener, GeocodeSearch.OnGeocodeSearchListener, View.OnClickListener {
+    private var aMap: AMap? = null
+    private var client: AMapLocationClient? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        initStateBar()
+        setContentView(R.layout.activity_map)
+        mapView.onCreate(savedInstanceState)
+        aMap = mapView.map
+        aMap?.myLocationStyle = MyLocationStyle().myLocationType(MyLocationStyle.LOCATION_TYPE_SHOW)
+        aMap?.isMyLocationEnabled = true// 设置为true表示启动显示定位蓝点，false表示隐藏定位蓝点并不进行定位，默认是false。
+        aMap!!.setOnCameraChangeListener(this)
+
+        //重新设置中心点
+        //参数依次是：视角调整区域的中心点坐标、希望调整到的缩放级别、俯仰角0°~45°（垂直与地图时为0）、偏航角 0~360° (正北方为0)
+        val mCameraUpdate = CameraUpdateFactory.newCameraPosition(CameraPosition(LatLng(Config.LATITUDE, Config.LONGITUDE), 17f, 30f, 0f))
+        //带有动画的移动缩放
+        aMap!!.animateCamera(mCameraUpdate, 2000, object : AMap.CancelableCallback {
+            override fun onFinish() {
+
+            }
+
+            override fun onCancel() {
+
+            }
+        })
+
+        ensure.setOnClickListener(this)
+    }
+
+    /**
+     *  @作者 : clb
+     *  @邮箱 : 17600686054@163.com
+     *  @日期 : 2018/2/28
+     *  @功能 : 地图移动后
+     */
+    override fun onCameraChangeFinish(cameraPosition: CameraPosition?) {
+        //获取中心点
+        val target = cameraPosition?.target
+        if (target != null) {
+            LogUtils.e("中心点", target.latitude.toString() + "经度" + "********************" + target.longitude + "纬度")
+            val search = GeocodeSearch(this@MapActivity)
+            var query = RegeocodeQuery(LatLonPoint(target.latitude, target.longitude), 200f, GeocodeSearch.AMAP)
+            search.setOnGeocodeSearchListener(this)
+            search.getFromLocationAsyn(query)
+        }
+    }
+
+    override fun onRegeocodeSearched(result: RegeocodeResult?, p1: Int) {
+        //获取地址描述信息
+        if (result != null) {
+            location_address.text = result.regeocodeAddress.formatAddress
+        }
+
+    }
+
+    override fun onGeocodeSearched(p0: GeocodeResult?, p1: Int) {
+
+    }
+
+
+    /**
+     *  @作者 : clb
+     *  @邮箱 : 17600686054@163.com
+     *  @日期 : 2018/3/1
+     *  @功能 : 确定按钮
+     */
+    override fun onClick(v: View?) {
+        Config.CHOOSE_ADDRESS_FROM_MAP = location_address.text.toString() + repair_address.text.toString().trim()
+        finish()
+    }
+
+    /**
+     *  @作者 : clb
+     *  @邮箱 : 17600686054@163.com
+     *  @日期 : 2018/2/28
+     *  @功能 : 地图发生异动
+     */
+    override fun onCameraChange(p0: CameraPosition?) {
+    }
+
+    /**
+     * @作者 : clb
+     * @邮箱 : 17600686054@163.com
+     * @日期 : 2018/2/23
+     * @功能 : 设置状态栏透明
+     */
+    private fun initStateBar() {
+        val window = window
+        window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+        window.statusBarColor = Color.TRANSPARENT
+    }
+
+    override fun onResume() {
+        super.onResume()
+        mapView.onResume()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        mapView.onPause()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        mapView.onDestroy()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle?) {
+        super.onSaveInstanceState(outState)
+        mapView.onSaveInstanceState(outState)
+    }
+}
+package com.livehelp.client.ui.service
+
+import android.content.Intent
+import android.view.View
+import com.livehelp.client.R
+import com.livehelp.client.ui.base.BaseActivity
+import com.livehelp.client.ui.main.MainActivity
+import kotlinx.android.synthetic.main.activity_register_result.*
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/2/26 14:57
+ * 类名     : RegisterResultActivity
+ * 功能     : 报名结果
+ */
+class RegisterResultActivity : BaseActivity(), View.OnClickListener {
+    override fun initLayout(): Int {
+        return R.layout.activity_register_result
+    }
+
+    override fun getPresenter() {
+    }
+
+    override fun initView() {
+    }
+
+    override fun initData() {
+    }
+
+    override fun initClick() {
+        back_service.setOnClickListener(this)
+    }
+
+    override fun onClick(v: View?) {
+        when (v) {
+            back_service -> {
+                startActivity(Intent(mContext, MainActivity::class.java))
+            }
+            else -> {
+            }
+        }
+    }
+}
+package com.livehelp.client.ui.service;
+
+import android.content.Intent;
+import android.support.v4.app.ActivityOptionsCompat;
+import android.support.v4.app.Fragment;
+import android.support.v4.util.Pair;
+import android.support.v4.view.ViewPager;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
+import android.widget.TextView;
+
+import com.livehelp.client.R;
+import com.livehelp.client.adapter.BannerViewHolder;
+import com.livehelp.client.adapter.ClassificationAdapter;
+import com.livehelp.client.application.Config;
+import com.livehelp.client.ui.base.BaseFragment;
+import com.livehelp.client.utils.GlideUtils;
+import com.livehelp.client.utils.LogUtils;
+import com.livehelp.client.utils.ToastUtils;
+import com.livehelp.client.widget.CustomScrollView;
+import com.zhouwei.mzbanner.MZBannerView;
+import com.zhouwei.mzbanner.holder.MZHolderCreator;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/1/19 13:39
+ * 类名     : ServiceFragment
+ * 功能     : 服务
+ */
+
+public class ServiceFragment extends BaseFragment implements View.OnClickListener, CustomScrollView.OnScrollListener {
+
+    private TextView location_current_service;
+    private MZBannerView mMZBanner;
+    private List<Fragment> fragmentList = new ArrayList<>();
+    private List<String> list = new ArrayList<>();
+    private ViewPager service_classification;
+    private LinearLayout service_commonweal_activity_list;
+    private TextView search_service;
+    private TextView more_activity;
+    private CustomScrollView sl_service;
+    private RelativeLayout rl_toolbar;
+    private TextView tv_search_service;
+    private TextView tv_current_location;
+    private LinearLayout title_commonweal;
+
+    @Override
+    protected int initLayout() {
+        return R.layout.fragment_service;
+    }
+
+    @Override
+    protected void initView(View RootView) {
+        location_current_service = RootView.findViewById(R.id.location_current_service);
+        mMZBanner = RootView.findViewById(R.id.mMZBanner);
+        service_classification = RootView.findViewById(R.id.service_classification);
+        service_commonweal_activity_list = RootView.findViewById(R.id.service_commonweal_activity_list);
+        search_service = RootView.findViewById(R.id.search_service);
+        more_activity = RootView.findViewById(R.id.more_activity);
+        sl_service = RootView.findViewById(R.id.sl_service);
+        rl_toolbar = RootView.findViewById(R.id.rl_toolbar);
+        tv_search_service = RootView.findViewById(R.id.tv_search_service);
+        tv_current_location = RootView.findViewById(R.id.tv_current_location);
+        title_commonweal = RootView.findViewById(R.id.title_commonweal);
+    }
+
+    @Override
+    protected void initToolbar() {
+
+    }
+
+    @Override
+    protected void initData() {
+        //设置轮播图数据
+        initBannerData();
+        //设置分类里面的Fragment
+        fragmentList.add(new FirstClassFragment());
+        fragmentList.add(new SecoundClassFragment());
+        //设置分类数据
+        initclassificationData();
+        //设置公益活动列表数据
+        initCommonwealActivityList();
+    }
+
+    /**
+     * @作者 : clb
+     * @邮箱 : 17600686054@163.com
+     * @日期 : 2018/2/24
+     * @功能 : 初始化公益活动列表
+     */
+    private void initCommonwealActivityList() {
+
+        if (list.size() > 3) {
+            more_activity.setVisibility(View.VISIBLE);
+        } else if (list.size() == 0) {
+            title_commonweal.setVisibility(View.GONE);
+        }
+        LayoutInflater inflater = getLayoutInflater();
+        for (int i = 0; i < list.size(); i++) {
+            View view = inflater.inflate(R.layout.item_commonweal_activity, null);
+            final ImageView imageView = view.findViewById(R.id.img_commonweal_list);
+            final TextView itemTitle = view.findViewById(R.id.item_title);
+            GlideUtils.INSTANCE.showImg(Config.TEST_IMG, mContext, imageView);
+            service_commonweal_activity_list.addView(view);
+            view.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    Intent i = new Intent(mContext, EventDetailActivity.class);
+                    Pair<View, String> pair = new Pair<View, String>(imageView, "img");
+                    Pair<View, String> pairText = new Pair<View, String>(itemTitle, "title");
+                    ActivityOptionsCompat optionsCompat = ActivityOptionsCompat.makeSceneTransitionAnimation(getActivity(), pair, pairText);
+                    startActivity(i, optionsCompat.toBundle());
+                }
+            });
+        }
+    }
+
+    /**
+     * @作者 : clb
+     * @邮箱 : 17600686054@163.com
+     * @日期 : 2018/2/23
+     * @功能 : 设置分类数据
+     */
+    private void initclassificationData() {
+        ClassificationAdapter adapter = new ClassificationAdapter(getChildFragmentManager());
+        adapter.setData(fragmentList);
+        service_classification.setAdapter(adapter);
+    }
+
+    /**
+     * @作者 : clb
+     * @邮箱 : 17600686054@163.com
+     * @日期 : 2018/2/24
+     * @功能 : 设置轮播图数据
+     */
+    private void initBannerData() {
+        list.add(Config.TEST_IMG);
+        list.add(Config.TEST_IMG);
+        list.add(Config.TEST_IMG);
+        list.add(Config.TEST_IMG);
+
+        //设置是否显示Indicator
+        mMZBanner.setIndicatorVisible(false);
+        mMZBanner.setBannerPageClickListener(new MZBannerView.BannerPageClickListener() {
+            @Override
+            public void onPageClick(View view, int position) {
+                ToastUtils.showToast(mContext, "onPageClick" + position);
+            }
+        });
+        // 设置数据
+        mMZBanner.setPages(list, new MZHolderCreator<BannerViewHolder>() {
+            @Override
+            public BannerViewHolder createViewHolder() {
+                return new BannerViewHolder();
+            }
+        });
+    }
+
+    @Override
+    protected void initRefresh() {
+
+    }
+
+    @Override
+    protected void initOnClick() {
+        super.initOnClick();
+        location_current_service.setOnClickListener(this);
+        search_service.setOnClickListener(this);
+        more_activity.setOnClickListener(this);
+        sl_service.setOnScrollListener(this);
+        tv_search_service.setOnClickListener(this);
+        tv_current_location.setOnClickListener(this);
+    }
+
+    @Override
+    public void onClick(View v) {
+        Intent intent;
+        ActivityOptionsCompat optionsCompat;
+        switch (v.getId()) {
+            case R.id.tv_current_location:
+            case R.id.location_current_service:
+                intent = new Intent(mContext, ChooseAddressActivity.class);
+                startActivity(intent);
+                break;
+
+            case R.id.tv_search_service:
+                intent = new Intent(mContext, SearchServiceActivity.class);
+                Pair<View, String> text = new Pair<View, String>(tv_search_service, "search");
+                optionsCompat = ActivityOptionsCompat.makeSceneTransitionAnimation(getActivity(), text);
+                startActivity(intent, optionsCompat.toBundle());
+                break;
+            case R.id.search_service:
+                intent = new Intent(mContext, SearchServiceActivity.class);
+                Pair<View, String> textView = new Pair<View, String>(search_service, "search");
+                optionsCompat = ActivityOptionsCompat.makeSceneTransitionAnimation(getActivity(), textView);
+                startActivity(intent, optionsCompat.toBundle());
+                break;
+
+            case R.id.more_activity:
+                intent = new Intent(mContext, CommonwealActivity.class);
+                startActivity(intent);
+                break;
+
+            default:
+
+        }
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        mMZBanner.pause();//暂停轮播
+
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        mMZBanner.start();//开始轮播
+        //设置定位城市
+        if (Config.LOCATION_SUCCESS) {
+            tv_current_location.setText(Config.CITY);
+            location_current_service.setText(Config.CITY);
+        }
+    }
+
+
+    /**
+     * @作者 : clb
+     * @邮箱 : 17600686054@163.com
+     * @日期 : 2018/2/26
+     * @功能 : 监听滑动
+     */
+    @Override
+    public void onScroll(int scrollY) {
+        LogUtils.INSTANCE.e("onScroll", String.valueOf(scrollY));
+        if (scrollY <= 30) {
+            rl_toolbar.setVisibility(View.GONE);
+        } else if (scrollY < 510 && scrollY > 30) {
+            rl_toolbar.setVisibility(View.VISIBLE);
+            rl_toolbar.getBackground().setAlpha(scrollY / 2);
+        }
+    }
+}
+package com.livehelp.client.ui.service
+
+import android.content.Context
+import android.support.v7.widget.GridLayoutManager
+import android.support.v7.widget.LinearLayoutManager
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.KeyEvent
+import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.TextView
+import android.widget.Toast
+import com.livehelp.client.R
+import com.livehelp.client.adapter.SearchHistoryAdapter
+import com.livehelp.client.adapter.SearchServiceAdapter
+import com.livehelp.client.db.RecordSQLiteOpenHelper
+import com.livehelp.client.ui.base.BaseActivity
+import kotlinx.android.synthetic.main.activity_search_service.*
+
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/2/23 15:16
+ * 类名     : SearchServiceActivity
+ * 功能     : 搜索服务
+ */
+class SearchServiceActivity : BaseActivity(), View.OnClickListener, TextWatcher, TextView.OnEditorActionListener {
+    private val list = java.util.ArrayList<String>()
+    private val helper = RecordSQLiteOpenHelper(this)
+    private val history = java.util.ArrayList<String>()
+
+
+    override fun initLayout(): Int {
+        return R.layout.activity_search_service
+    }
+
+    override fun getPresenter() {
+    }
+
+    override fun initView() {
+    }
+
+    override fun initData() {
+        queryData("")
+        initSearchResult()
+    }
+
+    /**
+     *  @作者 : clb
+     *  @邮箱 : 17600686054@163.com
+     *  @日期 : 2018/2/26
+     *  @功能 : 初始化匹配到的服务
+     */
+    private fun initSearchResult() {
+        list.add("维修")
+        list.add("维修")
+        list.add("维修")
+        list.add("维修")
+        list.add("维修")
+        list.add("维修")
+        list.add("维修")
+        list.add("维修")
+        list.add("维修")
+
+        //设置不能滑动
+        val manager = object : LinearLayoutManager(mContext) {
+            override fun canScrollVertically(): Boolean {
+                return false
+            }
+        }
+        //搜索结果
+        search_result.layoutManager = manager
+        val adapter = SearchServiceAdapter(mContext, R.layout.item_text, list)
+        search_result.adapter = adapter
+
+    }
+
+    override fun initClick() {
+        back.setOnClickListener(this)
+        et_search_service.addTextChangedListener(this)
+        et_search_service.setOnEditorActionListener(this)
+    }
+
+    override fun onClick(v: View?) {
+        when (v) {
+            back -> {
+                if (et_search_service.text.toString().trim().isEmpty()) {
+                    onBackPressed()
+                } else {
+                    et_search_service.setText("")
+                }
+            }
+        }
+    }
+
+
+    /**
+     *  @作者 : clb
+     *  @邮箱 : 17600686054@163.com
+     *  @日期 : 2018/2/28
+     *  @功能 : 监听软键盘
+     */
+    override fun onEditorAction(v: TextView?, actionId: Int, event: KeyEvent?): Boolean {
+        if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+            val text = et_search_service.text.toString().trim()
+            //通过SP进行存储
+            // 先隐藏键盘
+            (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(
+                    currentFocus!!.windowToken, InputMethodManager.HIDE_NOT_ALWAYS)
+            // 按完搜索键后将当前查询的关键字保存起来,如果该关键字已经存在就不执行保存
+            val hasData = hasData(text)
+            if (!hasData) {
+                insertData(text)
+                queryData("")
+            }
+            //执行搜索的逻辑
+            // TODO 根据输入的内容模糊查询商品，并跳转到另一个界面，由你自己去实现
+            Toast.makeText(mContext, "clicked!", Toast.LENGTH_SHORT).show()
+            return true
+        }
+        return false
+    }
+
+    /**
+     *  @作者 : clb
+     *  @邮箱 : 17600686054@163.com
+     *  @日期 : 2018/2/28
+     *  @功能 : 文字变化后
+     */
+    override fun afterTextChanged(s: Editable?) {
+        val text = et_search_service.text.trim()
+        if (text.isNotEmpty()) {
+            ll_history.visibility = View.GONE
+            ll_search_result.visibility = View.VISIBLE
+        } else {
+            ll_history.visibility = View.VISIBLE
+            ll_search_result.visibility = View.GONE
+        }
+    }
+
+    /**
+     *  @作者 : clb
+     *  @邮箱 : 17600686054@163.com
+     *  @日期 : 2018/2/28
+     *  @功能 : 文字发生变化前
+     */
+    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
+    }
+
+    /**
+     *  @作者 : clb
+     *  @邮箱 : 17600686054@163.com
+     *  @日期 : 2018/2/28
+     *  @功能 : 文字变化
+     */
+    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+    }
+
+    override fun onResume() {
+        super.onResume()
+        requestPermissions()
+    }
+
+    /**
+     * 插入数据
+     */
+    private fun insertData(tempName: String) {
+        val db = helper.getWritableDatabase()
+        db.execSQL("insert into records(name) values('$tempName')")
+        db.close()
+    }
+
+    /**
+     * 模糊查询数据
+     */
+    private fun queryData(tempName: String) {
+        val cursor = helper.getReadableDatabase().rawQuery(
+                "select id as _id,name from records where name like '%$tempName%' order by id desc ", null)
+
+        //先清空集合数据再查找
+        if (history.isEmpty().not()) {
+            history.clear()
+        }
+        while (cursor.moveToNext()) {
+            val data = cursor.getString(cursor.getColumnIndex("name"))
+            history.add(data)
+        }
+
+        //历史记录
+        var manager2 = GridLayoutManager(mContext, 2)
+        list_search_history.layoutManager = manager2
+        val adapter2 = SearchHistoryAdapter(mContext, R.layout.item_search_history, history)
+        list_search_history.adapter = adapter2
+        adapter2.notifyDataSetChanged()
+    }
+
+    /**
+     * 检查数据库中是否已经有该条记录
+     */
+    private fun hasData(tempName: String): Boolean {
+        val cursor = helper.getReadableDatabase().rawQuery(
+                "select id as _id,name from records where name =?", arrayOf(tempName))
+        //判断是否有下一个
+        return cursor.moveToNext()
+    }
+
+    /**
+     * 清空数据
+     */
+    private fun deleteData() {
+        val db = helper.getWritableDatabase()
+        db.execSQL("delete from records")
+        db.close()
+    }
+
+}
+package com.livehelp.client.ui.me
+
+import android.view.View
+import com.livehelp.client.R
+import com.livehelp.client.ui.base.BaseFragment
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/1/19 13:40
+ * 类名     : MeFragment
+ * 功能     : 我的
+ */
+class MeFragment : BaseFragment() {
+    override fun initLayout(): Int {
+        return R.layout.fragment_me
+    }
+
+    override fun initView(RootView: View?) {
+    }
+
+    override fun initToolbar() {
+    }
+
+    override fun initData() {
+    }
+
+    override fun initRefresh() {
+    }
+}
+package com.livehelp.client.ui.redPackage
+
+import android.view.View
+import com.bumptech.glide.Glide
+import com.livehelp.client.R
+import com.livehelp.client.ui.base.BaseFragment
+import kotlinx.android.synthetic.main.fragment_red_package.*
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/1/19 12:31
+ * 类名     : RedPackageFragment
+ * 功能     : 红包
+ */
+class RedPackageFragment : BaseFragment() {
+    override fun initLayout(): Int {
+        return R.layout.fragment_red_package
+    }
+
+    override fun initView(RootView: View?) {
+    }
+
+    override fun initToolbar() {
+    }
+
+    override fun initData() {
+        Glide.with(mContext).load(R.drawable.test_banner).into(test)
+    }
+
+    override fun initRefresh() {
+    }
+}
+package com.livehelp.client.utils
+
+import android.content.Context
+import android.support.v7.widget.RecyclerView
+import android.view.animation.AnimationUtils
+import com.livehelp.client.R
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/3/1 11:15
+ * 类名     : AnimUtils
+ * 功能     : 添加列表动画
+ */
+object AnimUtils {
+
+    /**
+     *  @作者 : clb
+     *  @邮箱 : 17600686054@163.com
+     *  @日期 : 2018/3/1
+     *  @功能 : 给列表添加动画
+     */
+    fun setItemAnimation(item: RecyclerView, mContext: Context): Unit {
+        val resId = R.anim.layout_animation_fall_down
+        val animation = AnimationUtils.loadLayoutAnimation(mContext, resId)
+        item.layoutAnimation = animation
+        val controller = AnimationUtils.loadLayoutAnimation(mContext, R.anim.layout_animation_fall_down)
+        item.layoutAnimation = controller
+        item.adapter.notifyDataSetChanged()
+        item.scheduleLayoutAnimation()
+    }
+}
+package com.livehelp.client.ui.mall
+
+import android.support.v7.widget.LinearLayoutManager
+import com.livehelp.client.R
+import com.livehelp.client.adapter.LogisticsListAdapter
+import com.livehelp.client.ui.base.BaseActivity
+import kotlinx.android.synthetic.main.activity_refund.*
+import java.util.*
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/3/10 10:21
+ * 类名     : LogisticsListActivity
+ * 功能     : 物流列表
+ */
+class LogisticsListActivity : BaseActivity() {
+    private var list = ArrayList<String>()
+    override fun initLayout(): Int {
+        return R.layout.activity_refund
+    }
+
+    override fun getPresenter() {
+    }
+
+    override fun initView() {
+    }
+
+    override fun initData() {
+        list.add("1")
+        list.add("1")
+        list.add("1")
+        list.add("1")
+        list.add("1")
+        list.add("1")
+        list.add("1")
+        logistics_list.layoutManager = LinearLayoutManager(mContext)
+        val logisticsListAdapter = LogisticsListAdapter(mContext, R.layout.item_logistics_list, list)
+        logistics_list.adapter = logisticsListAdapter
+    }
+
+    override fun initClick() {
+    }
+}
+package com.livehelp.client.service;
+
+import android.app.Service;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.IBinder;
+
+import com.livehelp.client.ui.test.MyLocalActivity;
+import com.livehelp.client.utils.ToastUtils;
+import com.orhanobut.logger.Logger;
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/1/26 16:40
+ * 类名     : LocalService
+ * 功能     : 锁屏监听的服务
+ */
+
+public class LocalService extends Service {
+    private BroadcastReceiver broadcastReceiver;
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
+
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        broadcastReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+
+                ToastUtils.showToast(context, "收到锁屏消息");
+
+                if (action.equals(Intent.ACTION_SCREEN_OFF)) {
+
+                    Intent lockscreen = new Intent(LocalService.this, MyLocalActivity.class);
+
+                    lockscreen.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); // ------->
+
+                    startActivity(lockscreen);
+                    ToastUtils.showToast(context, "启动锁屏Activity");
+
+                }
+            }
+        };
+
+        IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(Intent.ACTION_SCREEN_OFF);
+        registerReceiver(broadcastReceiver, intentFilter);
+
+
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+
+        Logger.d("Service Start");
+
+        return START_NOT_STICKY;
+    }
+}
+package com.livehelp.client.retrofit;
+
+import android.content.Context;
+
+import com.livehelp.client.BuildConfig;
+import com.livehelp.client.application.Config;
+import com.livehelp.client.application.LiveHelpApplication;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.orhanobut.logger.Logger;
+
+import java.io.IOException;
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.Interceptor;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.logging.HttpLoggingInterceptor;
+import retrofit2.Retrofit;
+import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory;
+import retrofit2.converter.gson.GsonConverterFactory;
+
+import static io.fabric.sdk.android.services.common.AbstractSpiCall.DEFAULT_TIMEOUT;
+
+/**
+ * *************************************************
+ * 项目名称:   LiveHelp
+ *
+ * @Author clb
+ * 邮箱:       17600686054@163.com
+ * 创建时间:   2018/1/6  9:32
+ * 用途  网络请求类
+ * *************************************************
+ */
+
+public  class ApiServiceManager {
+
+    private static ApiService apiService;
+
+    /**
+     * GSON 格式化对象
+     */
+    private final Gson mGsonDateFormat;
+
+    /**
+     * 初始化Gson对象
+     */
+    public ApiServiceManager() {
+        mGsonDateFormat = new GsonBuilder()
+                .setDateFormat("yyyy-MM-dd hh:mm:ss")
+                .create();
+    }
+    /**
+     * 链接超时时间
+     */
+    private static final long TIMEOUT = 5;
+
+    /**
+     * 获取单例
+     *
+     * @return
+     */
+    public static ApiServiceManager getInstance() {
+        return SingletonHolder.INSTANCE;
+    }
+    /**
+     * 静态类单例
+     */
+    private static class SingletonHolder {
+        private static final ApiServiceManager INSTANCE = new ApiServiceManager();
+    }
+
+    /**
+     * 构建网络服务
+     *
+     * @param serviceClass
+     * @param <S>
+     * @return
+     */
+    public <S> S createService(Class<S> serviceClass, Context context) {
+        Retrofit retrofit = new Retrofit.Builder()
+                //配置基础URL
+                .baseUrl(Config.BASEURL)
+                //配置网络客服端
+                .client(getOkHttpClient(context))
+                //添加Gson转换，json直接转换为相应格式的对象
+                //        FastJsonConverterFactory
+                .addConverterFactory(GsonConverterFactory.create(mGsonDateFormat))
+                //添加Rxjava回调语法
+                .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+                //构建
+                .build();
+        //构建服务
+        return retrofit.create(serviceClass);
+    }
+
+    /**
+     * 配置Okhttp
+     */
+    private OkHttpClient getOkHttpClient(Context context) {
+
+        /**
+         * Cookies维护工具类
+         */
+//        ClearableCookieJar cookieJar =
+//                new PersistentCookieJar(new SetCookieCache(), new SharedPrefsCookiePersistor(context));
+        //定制OkHttp
+        OkHttpClient.Builder httpClientBuilder = new OkHttpClient.Builder();
+        //维护Cookies
+//        httpClientBuilder.cookieJar(cookieJar);
+        //设置超时时间
+        if (BuildConfig.DEBUG) {
+            httpClientBuilder.addInterceptor(new Interceptor() {
+                @Override
+                public Response intercept(Chain chain) throws IOException {
+                    Request.Builder builder = chain.request().newBuilder();
+                    builder.addHeader("token", "123");
+                    return chain.proceed(builder.build());
+                }
+            }).addInterceptor(new HttpLoggingInterceptor(new HttpLoggingInterceptor.Logger() {
+                @Override
+                public void log(String message) {
+                    Logger.d("ApiMg" , message);
+                }
+            }).setLevel(HttpLoggingInterceptor.Level.BASIC));
+        }
+            httpClientBuilder.connectTimeout(DEFAULT_TIMEOUT, TimeUnit.SECONDS);
+            httpClientBuilder.writeTimeout(DEFAULT_TIMEOUT, TimeUnit.SECONDS);
+            httpClientBuilder.readTimeout(DEFAULT_TIMEOUT, TimeUnit.SECONDS);
+            //设置缓存
+//            File httpCacheDirectory = new File(context.getCacheDir(), "OkHttpCache");
+//            httpClientBuilder.cache(new Cache(httpCacheDirectory, 10 * 1024 * 1024));
+            //httpClientBuilder.cache(new Cache(httpCacheDirectory, 1));
+            return httpClientBuilder.build();
+    }
+
+    public final ApiService getApiServices(){
+        ApiService service = getInstance().createService(ApiService.class, LiveHelpApplication.getContext());
+        return  service ;
+    }
+}
+package com.livehelp.client.mvp.presenter
+
+import android.content.Context
+import com.amap.api.location.AMapLocation
+import com.amap.api.location.AMapLocationClient
+import com.amap.api.location.AMapLocationClientOption
+import com.amap.api.location.AMapLocationListener
+import com.livehelp.client.mvp.view.MainView
+import com.livehelp.client.ui.base.BasePresenter
+import java.text.SimpleDateFormat
+import java.util.*
+
+
+/**
+ **************************************************
+ * 项目名称:   LiveHelp
+ * @Author    clb
+ * 邮箱:       17600686054@163.com
+ * 创建时间:   2018/1/11  10:48
+ * 用途
+ **************************************************
+ */
+class MainPresenter : BasePresenter<MainView>(), AMapLocationListener {
+    //声明AMapLocationClient类对象
+    lateinit var mLocationClient: AMapLocationClient
+
+    override fun attachView(view: MainView, context: Context) {
+        super.attachView(view, context)
+    }
+
+    /**
+     *  @作者 : clb
+     *  @邮箱 : 17600686054@163.com
+     *  @日期 : 2018/2/22
+     *  @功能 : 开始定位
+     */
+    fun startLocation(mContext: Context) {
+        //初始化定位
+        mLocationClient = AMapLocationClient(mContext)
+        //设置定位监听
+        mLocationClient.setLocationListener(this)
+        //设置定位参数
+        var options = AMapLocationClientOption()
+        //设置只定位一次
+        options.setOnceLocation(true)
+        //设置精度
+        options.locationMode = AMapLocationClientOption.AMapLocationMode.Hight_Accuracy
+        //获取最近3s内精度最高的一次定位结果：
+        //设置setOnceLocationLatest(boolean b)接口为true，启动定位时SDK会返回最近3s内精度最高的一次定位结果。如果设置其为true，setOnceLocation(boolean b)接口也会被设置为true，反之不会，默认为false。
+        options.setOnceLocationLatest(true)
+        //设置是否返回地址信息（默认返回地址信息）
+        options.setNeedAddress(true)
+        //设置是否允许模拟位置,默认为true，允许模拟位置
+        options.setMockEnable(false)
+        //单位是毫秒，默认30000毫秒，建议超时时间不要低于8000毫秒。
+        options.setHttpTimeOut(20000)
+        //关闭缓存机制
+        options.setLocationCacheEnable(true)
+        //给定位客户端对象设置定位参数
+        mLocationClient.setLocationOption(options)
+        //启动定位
+        mLocationClient.startLocation()
+
+    }
+
+    override fun onLocationChanged(amapLocation: AMapLocation?) {
+        if (amapLocation != null) {
+            if (amapLocation.getErrorCode() == 0) {
+                //可在其中解析amapLocation获取相应内容。
+                amapLocation.locationType//获取当前定位结果来源，如网络定位结果，详见定位类型表
+                amapLocation.accuracy//获取精度信息
+                amapLocation.address//地址，如果option中设置isNeedAddress为false，则没有此结果，网络定位结果中会有地址信息，GPS定位不返回地址信息。
+                amapLocation.country//国家信息
+                amapLocation.street//街道信息
+                amapLocation.streetNum//街道门牌号信息
+                amapLocation.cityCode//城市编码
+                amapLocation.adCode//地区编码
+                amapLocation.aoiName//获取当前定位点的AOI信息
+                amapLocation.buildingId//获取当前室内定位的建筑物Id
+                amapLocation.floor//获取当前室内定位的楼层
+                amapLocation.gpsAccuracyStatus//获取GPS的当前状态
+                val latitude = amapLocation.latitude//获取纬度
+                val longitude = amapLocation.longitude//获取经度
+                val province = amapLocation.province//省信息
+                val city = amapLocation.city//城市信息
+                val district = amapLocation.district//城区信息
+                //获取定位时间
+                val df = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                val date = Date(amapLocation.time)
+                df.format(date)
+                mView.locationSuccess(province, city, district,latitude,longitude)
+            } else {
+                mView.locationFaile()
+            }
+        }
+    }
+
+}
+package com.livehelp.client.widget
+
+import android.content.Context
+import android.util.AttributeSet
+import android.widget.ScrollView
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/2/26 16:50
+ * 类名     : CustomScrollView
+ * 功能     : 自定义ScrollView
+ */
+class CustomScrollView : ScrollView {
+
+    private var listener: OnScrollListener? = null
+
+    /**
+     * 设置滑动距离监听器
+     */
+    fun setOnScrollListener(listener: OnScrollListener) {
+        this.listener = listener
+    }
+
+    constructor(context: Context) : super(context) {}
+
+    constructor(context: Context, attrs: AttributeSet) : super(context, attrs) {}
+
+    constructor(context: Context, attrs: AttributeSet, defStyleAttr: Int) : super(context, attrs, defStyleAttr) {}
+
+    // 滑动距离监听器
+    interface OnScrollListener {
+
+        /**
+         * 在滑动的时候调用，scrollY为已滑动的距离
+         */
+        fun onScroll(scrollY: Int)
+    }
+
+    override fun computeScroll() {
+        super.computeScroll()
+        if (listener != null) {
+            listener!!.onScroll(scrollY)
+        }
+    }
+}
+package com.livehelp.client.widget;
+
+/**
+ * *************************************************
+ * 项目名称:   bb_android0305
+ *
+ * @Author czsdandy
+ * 创建时间:   2018/3/12  16:13
+ * 用途
+ * http://blog.csdn.net/Ikulm/article/details/73196801
+ * *************************************************
+ */
+import java.lang.reflect.Field;
+import android.content.Context;
+import android.graphics.Rect;
+import android.support.v4.view.ViewCompat;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.util.Log;
+import android.view.View;
+
+import com.livehelp.client.BuildConfig;
+
+
+/**
+ * 重写 LinearLayoutManager 为了ScrollView可以显示RecyclerView 垂直布局
+ *
+ * @author M.Z
+ */
+public class FullyLinearLayoutManager extends LinearLayoutManager {
+
+    private static boolean canMakeInsetsDirty = true;
+    private static Field insetsDirtyField = null;
+
+    private static final int CHILD_WIDTH = 0;
+    private static final int CHILD_HEIGHT = 1;
+    private static final int DEFAULT_CHILD_SIZE = 100;
+
+    private final int[] childDimensions = new int[2];
+    private final RecyclerView view;
+
+    private int childSize = DEFAULT_CHILD_SIZE;
+    private boolean hasChildSize;
+    private int overScrollMode = ViewCompat.OVER_SCROLL_ALWAYS;
+    private final Rect tmpRect = new Rect();
+
+    public FullyLinearLayoutManager(Context context) {
+        super(context);
+        this.view = null;
+    }
+
+    public FullyLinearLayoutManager(Context context, int orientation, boolean reverseLayout) {
+        super(context, orientation, reverseLayout);
+        this.view = null;
+    }
+
+    public FullyLinearLayoutManager(RecyclerView view) {
+        super(view.getContext());
+        this.view = view;
+        this.overScrollMode = ViewCompat.getOverScrollMode(view);
+    }
+
+    public FullyLinearLayoutManager(RecyclerView view, int orientation, boolean reverseLayout) {
+        super(view.getContext(), orientation, reverseLayout);
+        this.view = view;
+        this.overScrollMode = ViewCompat.getOverScrollMode(view);
+    }
+
+    public void setOverScrollMode(int overScrollMode) {
+        if (overScrollMode < ViewCompat.OVER_SCROLL_ALWAYS || overScrollMode > ViewCompat.OVER_SCROLL_NEVER)
+            throw new IllegalArgumentException("Unknown overscroll mode: " + overScrollMode);
+        if (this.view == null) throw new IllegalStateException("view == null");
+        this.overScrollMode = overScrollMode;
+        ViewCompat.setOverScrollMode(view, overScrollMode);
+    }
+
+    public static int makeUnspecifiedSpec() {
+        return View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+    }
+
+    @Override
+    public void onMeasure(RecyclerView.Recycler recycler, RecyclerView.State state, int widthSpec, int heightSpec) {
+        final int widthMode = View.MeasureSpec.getMode(widthSpec);
+        final int heightMode = View.MeasureSpec.getMode(heightSpec);
+
+        final int widthSize = View.MeasureSpec.getSize(widthSpec);
+        final int heightSize = View.MeasureSpec.getSize(heightSpec);
+
+        final boolean hasWidthSize = widthMode != View.MeasureSpec.UNSPECIFIED;
+        final boolean hasHeightSize = heightMode != View.MeasureSpec.UNSPECIFIED;
+
+        final boolean exactWidth = widthMode == View.MeasureSpec.EXACTLY;
+        final boolean exactHeight = heightMode == View.MeasureSpec.EXACTLY;
+
+        final int unspecified = makeUnspecifiedSpec();
+
+        if (exactWidth && exactHeight) {
+            // in case of exact calculations for both dimensions let's use default "onMeasure" implementation
+            super.onMeasure(recycler, state, widthSpec, heightSpec);
+            return;
+        }
+
+        final boolean vertical = getOrientation() == VERTICAL;
+
+        initChildDimensions(widthSize, heightSize, vertical);
+
+        int width = 0;
+        int height = 0;
+
+        // it's possible to get scrap views in recycler which are bound to old (invalid) adapter entities. This
+        // happens because their invalidation happens after "onMeasure" method. As a workaround let's clear the
+        // recycler now (it should not cause any performance issues while scrolling as "onMeasure" is never
+        // called whiles scrolling)
+        recycler.clear();
+
+        final int stateItemCount = state.getItemCount();
+        final int adapterItemCount = getItemCount();
+        // adapter always contains actual data while state might contain old data (f.e. data before the animation is
+        // done). As we want to measure the view with actual data we must use data from the adapter and not from  the
+        // state
+        for (int i = 0; i < adapterItemCount; i++) {
+            if (vertical) {
+                if (!hasChildSize) {
+                    if (i < stateItemCount) {
+                        // we should not exceed state count, otherwise we'll get IndexOutOfBoundsException. For such items
+                        // we will use previously calculated dimensions
+                        measureChild(recycler, i, widthSize, unspecified, childDimensions);
+                    } else {
+                        logMeasureWarning(i);
+                    }
+                }
+                height += childDimensions[CHILD_HEIGHT];
+                if (i == 0) {
+                    width = childDimensions[CHILD_WIDTH];
+                }
+                if (hasHeightSize && height >= heightSize) {
+                    break;
+                }
+            } else {
+                if (!hasChildSize) {
+                    if (i < stateItemCount) {
+                        // we should not exceed state count, otherwise we'll get IndexOutOfBoundsException. For such items
+                        // we will use previously calculated dimensions
+                        measureChild(recycler, i, unspecified, heightSize, childDimensions);
+                    } else {
+                        logMeasureWarning(i);
+                    }
+                }
+                width += childDimensions[CHILD_WIDTH];
+                if (i == 0) {
+                    height = childDimensions[CHILD_HEIGHT];
+                }
+                if (hasWidthSize && width >= widthSize) {
+                    break;
+                }
+            }
+        }
+
+        if (exactWidth) {
+            width = widthSize;
+        } else {
+            width += getPaddingLeft() + getPaddingRight();
+            if (hasWidthSize) {
+                width = Math.min(width, widthSize);
+            }
+        }
+
+        if (exactHeight) {
+            height = heightSize;
+        } else {
+            height += getPaddingTop() + getPaddingBottom();
+            if (hasHeightSize) {
+                height = Math.min(height, heightSize);
+            }
+        }
+
+        setMeasuredDimension(width, height);
+
+        if (view != null && overScrollMode == ViewCompat.OVER_SCROLL_IF_CONTENT_SCROLLS) {
+            final boolean fit = (vertical && (!hasHeightSize || height < heightSize))
+                    || (!vertical && (!hasWidthSize || width < widthSize));
+
+            ViewCompat.setOverScrollMode(view, fit ? ViewCompat.OVER_SCROLL_NEVER : ViewCompat.OVER_SCROLL_ALWAYS);
+        }
+    }
+
+    private void logMeasureWarning(int child) {
+        if (BuildConfig.DEBUG) {
+            Log.w("LinearLayoutManager", "Can't measure child #" + child + ", previously used dimensions will be reused." +
+                    "To remove this message either use #setChildSize() method or don't run RecyclerView animations");
+        }
+    }
+
+    private void initChildDimensions(int width, int height, boolean vertical) {
+        if (childDimensions[CHILD_WIDTH] != 0 || childDimensions[CHILD_HEIGHT] != 0) {
+            // already initialized, skipping
+            return;
+        }
+        if (vertical) {
+            childDimensions[CHILD_WIDTH] = width;
+            childDimensions[CHILD_HEIGHT] = childSize;
+        } else {
+            childDimensions[CHILD_WIDTH] = childSize;
+            childDimensions[CHILD_HEIGHT] = height;
+        }
+    }
+
+    @Override
+    public void setOrientation(int orientation) {
+        // might be called before the constructor of this class is called
+        //noinspection ConstantConditions
+        if (childDimensions != null) {
+            if (getOrientation() != orientation) {
+                childDimensions[CHILD_WIDTH] = 0;
+                childDimensions[CHILD_HEIGHT] = 0;
+            }
+        }
+        super.setOrientation(orientation);
+    }
+
+    public void clearChildSize() {
+        hasChildSize = false;
+        setChildSize(DEFAULT_CHILD_SIZE);
+    }
+
+    public void setChildSize(int childSize) {
+        hasChildSize = true;
+        if (this.childSize != childSize) {
+            this.childSize = childSize;
+            requestLayout();
+        }
+    }
+
+    private void measureChild(RecyclerView.Recycler recycler, int position, int widthSize, int heightSize, int[] dimensions) {
+        final View child;
+        try {
+            child = recycler.getViewForPosition(position);
+        } catch (IndexOutOfBoundsException e) {
+            if (BuildConfig.DEBUG) {
+                Log.w("LinearLayoutManager", "LinearLayoutManager doesn't work well with animations. Consider switching them off", e);
+            }
+            return;
+        }
+
+        final RecyclerView.LayoutParams p = (RecyclerView.LayoutParams) child.getLayoutParams();
+
+        final int hPadding = getPaddingLeft() + getPaddingRight();
+        final int vPadding = getPaddingTop() + getPaddingBottom();
+
+        final int hMargin = p.leftMargin + p.rightMargin;
+        final int vMargin = p.topMargin + p.bottomMargin;
+
+        // we must make insets dirty in order calculateItemDecorationsForChild to work
+        makeInsetsDirty(p);
+        // this method should be called before any getXxxDecorationXxx() methods
+        calculateItemDecorationsForChild(child, tmpRect);
+
+        final int hDecoration = getRightDecorationWidth(child) + getLeftDecorationWidth(child);
+        final int vDecoration = getTopDecorationHeight(child) + getBottomDecorationHeight(child);
+
+        final int childWidthSpec = getChildMeasureSpec(widthSize, hPadding + hMargin + hDecoration, p.width, canScrollHorizontally());
+        final int childHeightSpec = getChildMeasureSpec(heightSize, vPadding + vMargin + vDecoration, p.height, canScrollVertically());
+
+        child.measure(childWidthSpec, childHeightSpec);
+
+        dimensions[CHILD_WIDTH] = getDecoratedMeasuredWidth(child) + p.leftMargin + p.rightMargin;
+        dimensions[CHILD_HEIGHT] = getDecoratedMeasuredHeight(child) + p.bottomMargin + p.topMargin;
+
+        // as view is recycled let's not keep old measured values
+        makeInsetsDirty(p);
+        recycler.recycleView(child);
+    }
+
+    private static void makeInsetsDirty(RecyclerView.LayoutParams p) {
+        if (!canMakeInsetsDirty) {
+            return;
+        }
+        try {
+            if (insetsDirtyField == null) {
+                insetsDirtyField = RecyclerView.LayoutParams.class.getDeclaredField("mInsetsDirty");
+                insetsDirtyField.setAccessible(true);
+            }
+            insetsDirtyField.set(p, true);
+        } catch (NoSuchFieldException e) {
+            onMakeInsertDirtyFailed();
+        } catch (IllegalAccessException e) {
+            onMakeInsertDirtyFailed();
+        }
+    }
+
+    private static void onMakeInsertDirtyFailed() {
+        canMakeInsetsDirty = false;
+        if (BuildConfig.DEBUG) {
+            Log.w("LinearLayoutManager", "Can't make LayoutParams insets dirty, decorations measurements might be incorrect");
+        }
+    }
+}
+package com.livehelp.client.widget
+
+import android.content.Context
+import android.util.AttributeSet
+import android.widget.ScrollView
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/2/26 16:50
+ * 类名     : CustomScrollView
+ * 功能     : 自定义ScrollView
+ */
+class CustomScrollView : ScrollView {
+
+    private var listener: OnScrollListener? = null
+
+    /**
+     * 设置滑动距离监听器
+     */
+    fun setOnScrollListener(listener: OnScrollListener) {
+        this.listener = listener
+    }
+
+    constructor(context: Context) : super(context) {}
+
+    constructor(context: Context, attrs: AttributeSet) : super(context, attrs) {}
+
+    constructor(context: Context, attrs: AttributeSet, defStyleAttr: Int) : super(context, attrs, defStyleAttr) {}
+
+    // 滑动距离监听器
+    interface OnScrollListener {
+
+        /**
+         * 在滑动的时候调用，scrollY为已滑动的距离
+         */
+        fun onScroll(scrollY: Int)
+    }
+
+    override fun computeScroll() {
+        super.computeScroll()
+        if (listener != null) {
+            listener!!.onScroll(scrollY)
+        }
+    }
+}
+package com.livehelp.client.utils.enums
+
+/**
+ **************************************************
+ * 项目名称:   LiveHelp
+ * @Author    clb
+ * 邮箱:       17600686054@163.com
+ * 创建时间:   2018/1/10  16:18
+ * 用途 转场动画枚举类
+ **************************************************
+ */
+enum class TransferEnum {
+
+    //传统的转场动画
+    NORMAL,
+    //从四面八方进入
+    EXPLODE,
+    //从底部依次进入
+    SLIDE,
+    //下一个页面渐变进入
+    FADE,
+    //与下个页面共享元素进入
+    SHARE,
+
+}
+package com.livehelp.client.adapter
+
+import android.content.Context
+import android.support.v4.view.PagerAdapter
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageView
+import com.bumptech.glide.Glide
+import com.livehelp.client.application.Config
+
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/2/24 12:26
+ * 类名     : BannerAdapter
+ * 功能     : 轮播图适配器
+ */
+class BannerAdapter(var mContext: Context) : PagerAdapter() {
+
+    private var viewLists = ArrayList<ImageView>()
+    private var urlList = ArrayList<String>()
+
+    fun setData(x: ArrayList<String>): Unit {
+        urlList = x
+        urlList.forEach {
+            val imageView = ImageView(mContext)
+            viewLists.add(imageView)
+        }
+    }
+
+    override fun getCount(): Int {
+        return 10000
+    }
+
+    override fun isViewFromObject(view: View, `object`: Any): Boolean {
+        return view === `object`
+    }
+
+    override fun destroyItem(view: ViewGroup, position: Int, `object`: Any) {
+        //销毁Item
+        val x = viewLists[position]
+        x.scaleType = ImageView.ScaleType.CENTER_CROP
+        view.removeView(x)
+    }
+
+    override fun instantiateItem(view: ViewGroup, position: Int): Any {
+        //实例化Item
+        val imageView = viewLists[position]
+        imageView.scaleType = ImageView.ScaleType.CENTER_CROP
+        Glide.with(mContext).load(Config.TEST_IMG).into(imageView)
+        view.addView(imageView, 0)
+        return viewLists[position]
+    }
+}
+package com.livehelp.client.adapter
+
+import android.support.v4.app.Fragment
+import android.support.v4.app.FragmentManager
+import android.support.v4.app.FragmentPagerAdapter
+import java.util.ArrayList
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/2/24 9:08
+ * 类名     : ClassificationAdapter
+ * 功能     :
+ */
+class ClassificationAdapter(fm:FragmentManager) : FragmentPagerAdapter(fm) {
+    internal var list: List<Fragment> = ArrayList()
+
+    fun setData(x: List<Fragment>): Unit {
+        this.list = x
+    }
+
+    override fun getItem(position: Int): Fragment {
+        return list.get(position)
+    }
+
+    override fun getCount(): Int {
+        return list.size
+    }
+}
+package com.livehelp.client.adapter
+
+import android.content.Context
+import android.view.View
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
+import com.livehelp.client.R
+import com.zhy.adapter.recyclerview.CommonAdapter
+import com.zhy.adapter.recyclerview.base.ViewHolder
+import kotlinx.android.synthetic.main.item_pay.view.*
+
+/**
+ **************************************************
+ * 项目名称:   bb_android0305
+ * @Author     czsdandy
+ * 创建时间:   2018/3/6  10:05
+ * 用途        为您推荐商品列表
+ **************************************************
+ */
+class PayAdapter(var context: Context, layoutId: Int, datas: List<String>) : CommonAdapter<String>(context, layoutId, datas) {
+
+    override fun convert(holder: ViewHolder?, t: String?, position: Int) {
+        if (holder != null){
+            var pay_icon = holder.getView<ImageView>(R.id.pay_icon)
+            var pay_kind = holder.getView<TextView>(R.id.pay_kind)
+            var ll_payitem = holder.getView<LinearLayout>(R.id.ll_payitem)
+            pay_kind.text = datas.get(position)
+            ll_payitem.setOnClickListener {    if(itemClick != null) {
+                itemClick!!.OnItemClick(holder.itemView, position)
+            } }
+            when(position){
+                0 -> pay_icon.background = context.getDrawable(R.mipmap.pay_tonglian)
+                1 -> pay_icon.background = context.getDrawable(R.mipmap.pay_cash)
+                2 -> pay_icon.background = context.getDrawable(R.mipmap.pay_zhifubao)
+                3 -> pay_icon.background = context.getDrawable(R.mipmap.pay_yinlian)
+                4 -> pay_icon.background = context.getDrawable(R.mipmap.pay_yufuka)
+                5 -> pay_icon.background = context.getDrawable(R.mipmap.pay_wechat)
+                6 -> pay_icon.background = context.getDrawable(R.mipmap.pay_erweima)
+            }
+        }
+    }
+    var itemClick : ItemClick ?= null
+    interface ItemClick{
+        fun OnItemClick(v : View, position : Int);
+    }
+    fun setItemClickListener(itemClick : ItemClick){
+        this.itemClick = itemClick
+    }
+}
+
+
+
+package com.livehelp.client.adapter
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Color
+import android.widget.LinearLayout
+import android.widget.TextView
+import com.livehelp.client.R
+import com.livehelp.client.application.LiveHelpApplication
+import com.zhy.adapter.recyclerview.CommonAdapter
+import com.zhy.adapter.recyclerview.base.ViewHolder
+import java.util.ArrayList
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/3/8 14:30
+ * 类名     : ClassAdapter
+ * 功能     :
+ */
+class ClassAdapter(val mContext: Context, text: Int, classList: ArrayList<String>) :CommonAdapter<String>(mContext,text,classList){
+    private var state = ArrayList<Boolean>()
+    @SuppressLint("ResourceAsColor")
+    override fun convert(holder: ViewHolder, t: String?, position: Int) {
+        holder.setText(R.id.tv, t)
+        if (state[position]) {
+            holder.getView<LinearLayout>(R.id.ll_class).setBackgroundColor(Color.WHITE)
+        } else {
+            holder.getView<LinearLayout>(R.id.ll_class).background = LiveHelpApplication.appContext.resources.getDrawable(R.drawable.shape_shop_home_item_bg)
+        }
+    }
+
+    fun setData(state: ArrayList<Boolean>) {
+        this.state = state
+    }
+}
+package com.livehelp.client.adapter
+
+import android.content.Context
+import android.graphics.Color
+import android.widget.LinearLayout
+import com.livehelp.client.R
+import com.livehelp.client.application.LiveHelpApplication
+import com.zhy.adapter.recyclerview.CommonAdapter
+import com.zhy.adapter.recyclerview.base.ViewHolder
+import java.util.*
+
+/**
+ * 作者     : clb
+ * 邮箱     : 17600686054@163.com
+ * 日期     : 2018/2/27 14:53
+ * 类名     : ClassShspHomeAdapter
+ * 功能     : 店铺首页分类适配器
+ */
+class ClassShspHomeAdapter(var mContext: Context, text: Int, classList: MutableList<String>) : CommonAdapter<String>(mContext, text, classList) {
+
+    private var state = ArrayList<Boolean>()
+    override fun convert(holder: ViewHolder?, t: String?, position: Int) {
+        if (holder != null) {
+            holder.setText(R.id.tv, t)
+            if (state.get(position)) {
+                holder.getView<LinearLayout>(R.id.ll_class).background = LiveHelpApplication.appContext.resources.getDrawable(R.drawable.shape_shop_home_item_bg)
+            } else {
+                holder.getView<LinearLayout>(R.id.ll_class).setBackgroundColor(Color.WHITE)
+            }
+        }
+    }
+
+    fun setData(state: ArrayList<Boolean>) {
+        this.state = state
+    }
+}
+package com.livehelp.client.adapter;
+
+import android.content.Context;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.view.View;
+import android.view.ViewGroup;
+
+import com.livehelp.client.R;
+
+/**
+ * *************************************************
+ * 项目名称:   bb_android0305
+ *
+ * @Author czsdandy
+ * 创建时间:   2018/3/8  14:31
+ * 用途
+    退款列表
+ * *************************************************
+ */
+public class DrawBackOrderAdapter extends RecyclerView.Adapter {
+    private Context context;
+    private static final int DRAW_BACK = 1 ;
+
+
+    public DrawBackOrderAdapter(Context context) {
+        this.context = context;
+    }
+
+    @Override
+    public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+        View view;
+            if (viewType == DRAW_BACK) {
+                view =View.inflate(parent.getContext(), R.layout.item_drawback,null);
+                return new DrawBackOrderAdapter.DrawBackHolder(view);
+            }else {
+                view =View.inflate(parent.getContext(), R.layout.item_drawback_ing,null);
+                return new DrawBackOrderAdapter.DrawBackHolderIng(view);
+            }
+
+
+    }
+
+    @Override
+    public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
+
+    }
+
+    @Override
+    public int getItemCount() {
+        return 2;
+    }
+
+    @Override
+    public int getItemViewType(int position) {
+        int kind = -1;
+        switch (position) {
+            case 0 :
+                    kind = DRAW_BACK ;
+                break ;
+            default:
+
+                break;
+        }
+        return kind;
+    }
+
+    public class DrawBackHolder extends RecyclerView.ViewHolder {
+        public DrawBackHolder(View view) {
+            super(view);
+        }
+    }
+
+    public class DrawBackHolderIng extends RecyclerView.ViewHolder {
+        public DrawBackHolderIng(View view) {
+            super(view);
+        }
+    }
+}
+package com.livehelp.client.adapter;
+
+import android.content.Context;
+import android.graphics.Color;
+import android.support.v7.widget.RecyclerView;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.TextView;
+
+import com.livehelp.client.R;
+import com.livehelp.client.utils.DpPxUtils;
+import com.livehelp.client.widget.TextTagSpan;
+import com.livehelp.client.widget.Truss;
+
+/**
+ * *************************************************
+ * 项目名称:   bb_android0305
+ *
+ * @Author czsdandy
+ * 创建时间:   2018/3/7  14:56
+ * 用途        用户评价
+ * http://blog.csdn.net/qq_35353487/article/details/74336019
+ * *************************************************
+ */
+public class GoodsCommentAdapter extends RecyclerView.Adapter {
+    private Context context ;
+    public GoodsCommentAdapter(Context context){
+        this.context = context ;
+    }
+
+    private static final int TYPE_ZP = 1; // 单一评论加追评
+    private static final int TYPE_B = 0; //单一评论
+    private static final int TYPE_R = 2;// 单一评论加商家回复
+    private static final int TYPE_ZP_R = 3;// 单一评论加
+
+    @Override
+    public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+        View view;
+        if (viewType == TYPE_B) {
+            view =View.inflate(parent.getContext(), R.layout.item_goodscom_type_b,null);
+            return new B_holder(view);
+        }else if (viewType == TYPE_ZP) {
+            view =View.inflate(parent.getContext(), R.layout.item_goodscom_type_zp,null);
+            return new ZP_holder(view);
+        }else if (viewType ==TYPE_R) {
+            view =View.inflate(parent.getContext(), R.layout.item_goodscom_type_r,null);
+            return new R_holder(view);
+        }else {
+            view =View.inflate(parent.getContext(), R.layout.item_goodscom_type_zp_r,null);
+            return new ZP_R_holder(view);
+        }
+    }
+
+    @Override
+    public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
+
+    }
+
+    @Override
+    public int getItemCount() {
+        return 4;
+    }
+
+    @Override
+    public int getItemViewType(int position) {
+        int kind = -1;
+        switch (position) {
+            case 0:
+                kind = TYPE_B;
+                break;
+            case 1:
+                kind = TYPE_ZP;
+                break;
+            case 2:
+                kind = TYPE_R;
+                break;
+            case 3:
+                kind = TYPE_ZP_R;
+                break;
+            default:
+                break;
+        }
+        return kind;
+    }
+
+    private class ZP_holder extends RecyclerView.ViewHolder{
+
+        public ZP_holder(View itemView) {
+            super(itemView);
+        }
+    }
+
+    private class B_holder extends RecyclerView.ViewHolder{
+
+        public B_holder(View itemView) {
+            super(itemView);
+        }
+    }
+
+    private class ZP_R_holder extends RecyclerView.ViewHolder{
+
+        public ZP_R_holder(View itemView) {
+            super(itemView);
+        }
+
+
+    }
+    private void setTitleTag(String 全国自营, TextView goodsTitle) {
+        Truss truss = new Truss();
+        TextTagSpan span = new TextTagSpan(context, DpPxUtils.dip2px(58), DpPxUtils.dip2px(20))
+                .setTextColor(Color.WHITE)
+                .setTextSize(DpPxUtils.sp2px(11));
+
+        truss.pushSpan(span)
+                .append(全国自营)
+                .popSpan()
+                .append("毛呢大衣男韩版青年双排扣羊毛大衣中长款呢子外套");
+        goodsTitle.setText(truss.build());
+    }
+    private class R_holder extends RecyclerView.ViewHolder{
+
+        public R_holder(View itemView) {
+            super(itemView);
+        }
+    }
+}
+

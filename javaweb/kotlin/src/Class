@@ -1,0 +1,18 @@
+1：Much the same way as regular properties, the properties declared in the primary constructor can be mutable (var) or read-only (val).
+
+2：Note that parameters of the primary constructor can be used in the initializer blocks. They can also be used in property initializers declared in the class body
+class Customer(name: String) {
+    val customerKey = name.toUpperCase()
+}
+
+3：In fact, for declaring properties and initializing them from the primary constructor, Kotlin has a concise syntax:
+class Person(val firstName: String, val lastName: String, var age: Int) {
+    // ...
+}
+
+4：it will have a generated primary constructor with no argument  ---> just like java ! if dont want this , so look:
+class DontCreateMe private constructor () {
+}
+
+5:generate an additional parameterless constructor  生成一个额外的无参数的构造函数
+

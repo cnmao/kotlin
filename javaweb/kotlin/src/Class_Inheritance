@@ -1,0 +1,80 @@
+1:All classes in Kotlin have a common superclass Any
+    Any is not java.lang.Object;
+
+2:in particular, it does not have any members other than equals(), hashCode() and toString()
+
+3:Key：super
+
+
+override Method
+
+4：A member marked override is itself open, i.e. it may be overridden in subclasses. If you want to prohibit re-overriding, use final
+open class AnotherDerived() : Base() {
+    final override fun v() {}
+}
+
+5:Each declared property can be overridden by a property with an initializer or by a property with a getter method
+open class Foo {
+    open val x: Int get() { ... }
+}
+
+class Bar1 : Foo() {
+    override val x: Int = ...
+}
+
+6:Calling the superclass implementation
+    A:super
+    B:super@Outer
+
+    Overriding Rules
+
+    open class A {
+        open fun f() { print("A") }
+        fun a() { print("a") }
+    }
+
+    interface B {
+        fun f() { print("B") } // interface members are 'open' by default
+        fun b() { print("b") }
+    }
+
+    class C() : A(), B {
+        // The compiler requires f() to be overridden:
+        override fun f() {
+            super<A>.f() // call to A.f()
+            super<B>.f() // call to B.f()
+        }
+    }
+
+7:Companion Objects
+    In Kotlin, unlike Java or C#, classes do not have static methods
+
+
+8:
+    object DataProviderManager {
+        fun registerDataProvider(provider: DataProvider) {
+            // ...
+        }
+
+        val allDataProviders: Collection<DataProvider>
+            get() = // ...
+    }
+
+9:key:companion
+    class MyClass {
+        companion object Factory {
+            fun create(): MyClass = MyClass()
+        }
+    }
+    how to use : val instance = MyClass.create()
+
+10:on the JVM you can have members of companion objects generated as real static methods and fields
+
+11:@Throws(IOException::class)
+   fun foo() {
+       throw IOException()
+   }
+
+12:fun emptyList(): List<Nothing> = listOf()
+   // is translated to
+   // List emptyList() { ... }
